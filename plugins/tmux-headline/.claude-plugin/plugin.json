@@ -1,0 +1,5 @@
+{
+  "name": "tmux-headline",
+  "description": "Shows Claude session headlines in tmux pane borders and window tabs",
+  "version": "1.0.0"
+}
