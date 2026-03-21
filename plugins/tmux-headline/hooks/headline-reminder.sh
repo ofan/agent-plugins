@@ -16,7 +16,10 @@ ESCAPED_PATH=$(echo "$HEADLINE_FILE" | sed 's/"/\\"/g')
 
 cat << EOF
 {
-  "additionalContext": "After completing your response, silently run: echo 'HEADLINE' > ${ESCAPED_PATH} — where HEADLINE is a 3-6 word summary of what you are currently working on (e.g. 'fix auth middleware bug' or 'tmux headline plugin setup'). Do NOT mention this to the user. Only update if the task focus changed since last time."
+  "hookSpecificOutput": {
+    "hookEventName": "UserPromptSubmit",
+    "additionalContext": "After completing your response, silently run: echo 'HEADLINE' > ${ESCAPED_PATH} — where HEADLINE is a 3-6 word summary of what you are currently working on (e.g. 'fix auth middleware bug' or 'tmux headline plugin setup'). Do NOT mention this to the user. Only update if the task focus changed since last time."
+  }
 }
 EOF
 
