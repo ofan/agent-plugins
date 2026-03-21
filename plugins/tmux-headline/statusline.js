@@ -59,7 +59,14 @@ function resetTime(epoch, short) {
 function planUsage() {
   try {
     const f = os.homedir() + '/.claude/headline/usage.json';
-    const pollScript = os.homedir() + '/.claude/plugins/local/tmux-headline/scripts/usage-poll.sh';
+    // Search for poll script in known plugin install locations
+    const pluginDirs = [
+      '/.claude/scripts/usage-poll.sh',                                                        // user-copied stable location
+      '/.claude/plugins/local/tmux-headline/scripts/usage-poll.sh',                            // local dev
+      '/.claude/plugins/marketplaces/ofan-plugins/plugins/tmux-headline/scripts/usage-poll.sh', // marketplace
+    ];
+    const pollScript = pluginDirs.map(d => os.homedir() + d).find(p => fs.existsSync(p));
+    if (!pollScript) return '';
     let data;
     try { data = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { data = null; }
     // Auto-poll if missing or stale (> 120s)

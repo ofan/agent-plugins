@@ -88,6 +88,15 @@ Shows your 5-hour and 7-day usage limits in Claude's statusline:
 
 Sends a minimal Haiku API call (~9 tokens) with the `oauth-2025-04-20` beta header to read `anthropic-ratelimit-unified-*` response headers. Results cached to `~/.claude/headline/usage.json`, polled at most once per 60 seconds via the Stop hook.
 
+### Credential sources
+
+The poll script reads OAuth tokens from (in order):
+
+1. **`~/.claude/.credentials.json`** — file-based credentials (Linux, older Claude Code versions)
+2. **macOS Keychain** — `Claude Code-credentials` service entry (current Claude Code on macOS)
+
+If neither source has a valid, non-expired token, the poll is silently skipped.
+
 ### Statusline setup
 
 Copy `statusline.js` to `~/.claude/` and add to `~/.claude/settings.json`:

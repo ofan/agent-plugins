@@ -2,21 +2,18 @@
 # Poll Claude API for subscription usage (5h/7d limits)
 # Sends a minimal Haiku request to read rate limit headers
 # Writes results to ~/.claude/headline/usage.json
+# Supports both file-based credentials and macOS keychain
 set -f
 
-CREDS="$HOME/.claude/.credentials.json"
 USAGE_FILE="$HOME/.claude/headline/usage.json"
 
-[ -f "$CREDS" ] || exit 0
-
 python3 << 'PYEOF'
-import json, os, sys, time
+import json, os, platform, subprocess, sys, time
 try:
     from urllib.request import Request, urlopen
 except ImportError:
     sys.exit(0)
 
-creds_file = os.path.expanduser("~/.claude/.credentials.json")
 usage_file = os.path.expanduser("~/.claude/headline/usage.json")
 
 # Skip if polled recently (< 60s)
@@ -28,16 +25,35 @@ try:
 except:
     pass
 
-with open(creds_file) as f:
-    creds = json.load(f)
+token = None
 
-oauth = creds.get("claudeAiOauth", {})
-token = oauth.get("accessToken")
+# Try file-based credentials first (Linux, older Claude Code)
+creds_file = os.path.expanduser("~/.claude/.credentials.json")
+if os.path.exists(creds_file):
+    try:
+        with open(creds_file) as f:
+            creds = json.load(f)
+        oauth = creds.get("claudeAiOauth", {})
+        if oauth.get("expiresAt", 0) / 1000 > time.time():
+            token = oauth.get("accessToken")
+    except:
+        pass
+
+# Fall back to macOS keychain (current Claude Code on macOS)
+if not token and platform.system() == "Darwin":
+    try:
+        raw = subprocess.check_output(
+            ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+            stderr=subprocess.DEVNULL, timeout=5
+        ).decode().strip()
+        creds = json.loads(raw)
+        oauth = creds.get("claudeAiOauth", {})
+        if oauth.get("expiresAt", 0) / 1000 > time.time():
+            token = oauth.get("accessToken")
+    except:
+        pass
+
 if not token:
-    sys.exit(0)
-
-# Check if token is expired
-if oauth.get("expiresAt", 0) / 1000 < time.time():
     sys.exit(0)
 
 # Minimal Haiku call — costs ~9 tokens
