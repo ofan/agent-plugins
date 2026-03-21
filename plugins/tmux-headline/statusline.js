@@ -6,7 +6,7 @@ const { execFileSync } = require('child_process');
 
 const R = '\x1b[0m', DIM = '\x1b[2m';
 const G = '\x1b[2;32m', Y = '\x1b[2;33m', RE = '\x1b[2;31m';
-const FG = '\x1b[2;36m', HI = '\x1b[2;37m', M = '\x1b[2;35m';
+const FG = '\x1b[2;36m', M = '\x1b[2;35m';
 
 const pc = p => p < 50 ? G : p < 80 ? Y : RE;
 
@@ -143,9 +143,6 @@ function main() {
 
   const u = os.userInfo().username;
   const h = os.hostname().split('.')[0];
-  const pl = os.platform();
-  const env = pl === 'win32' ? (process.env.WSL_DISTRO_NAME ? 'wsl' : 'win')
-            : pl === 'darwin' ? 'mac' : 'linux';
 
   const model = (j.model?.display_name || j.model?.id || '?')
     .replace(/^Claude\s*/i, '').replace(/\s*\(.*?\)/g, '').replace(/\s+/g, '').toLowerCase();
@@ -153,8 +150,6 @@ function main() {
   const cw = j.context_window || {};
   const remaining = cw.remaining_percentage ?? (100 - (cw.used_percentage || 0));
   const cwd = shortCwd(j.cwd || process.cwd());
-  const d = dur(j.cost?.total_duration_ms);
-  const tok = totalTokens(cw);
   const csz = ctxSize(cw);
   const usedPct = 100 - remaining;
   const ctxUsed = Math.round((cw.context_window_size || 200000) * usedPct / 100);
