@@ -1,6 +1,6 @@
 # tmux-headline
 
-Claude Code plugin that shows session headlines, animated spinner, and subscription usage in your tmux status bar and Claude statusline.
+Claude Code plugin for tmux headlines, plus a Codex-compatible tmux/title setup.
 
 Instead of every window showing `claude`, you see what each session is actually working on:
 
@@ -10,13 +10,13 @@ Instead of every window showing `claude`, you see what each session is actually 
 
 - Busy sessions show an animated spinner (cycles every second)
 - Idle sessions show `✳`
-- Non-Claude windows are unaffected
+- Codex windows can also use pane titles for spinner/title display
 
-## Install
+## Claude install
 
 ```sh
 # Via marketplace
-claude plugin marketplace add ofan/claude-plugins
+claude plugin marketplace add ofan/agent-plugins
 claude plugin install tmux-headline@ofan-plugins
 ```
 
@@ -40,6 +40,32 @@ set -g pane-border-format "#{pane_index} #{?#{@pane_headline},#[fg=colour90]#{@p
 ```
 
 Replace the spinner.sh path with your actual plugin path if different.
+
+## Codex support
+
+Codex does not run the Claude hooks used for `@headline` / `@pane_headline`, so the Codex path relies on:
+
+- Codex `terminal_title`
+- tmux `pane_title`
+- tmux window-status formats that treat Codex panes separately from Claude panes
+- Codex `~/.codex/config.toml` for the native bottom status bar
+
+With the setup used on this machine:
+
+- Claude keeps the themed tmux spinner plus `@headline`
+- Codex uses the native braille spinner from `pane_title` while active
+- Codex falls back to a static braille glyph when idle
+- Codex's built-in bottom status bar stays native; only the segment order is configurable there
+
+Example Codex config:
+
+```toml
+status_line = ["directory", "git_branch", "token_usage", "context_window", "rate_limits"]
+terminal_title = ["directory", "git_branch"]
+
+[tui]
+status_line = ["current-dir", "model-with-reasoning", "context-remaining", "five-hour-limit", "weekly-limit", "fast-mode"]
+```
 
 ## How it works
 
@@ -74,14 +100,14 @@ export HEADLINE_SPINNER=claude
 
 ## Subscription usage polling
 
-Shows your 5-hour and 7-day usage limits in Claude's statusline:
+Shows your 5-hour and 7-day usage limits in Claude's statusline as explicit ASCII bars with reset times:
 
 ```
-14%⏳2h10 · 44%⏳Thu 23:00
+5h [#-------] 14% used reset 2h10m · 7d [####----] 44% used reset Thu 23:00
 ```
 
-- First number: 5-hour rolling window usage with relative reset time
-- Second number: 7-day weekly quota usage with reset day + local time
+- First segment: 5-hour rolling window usage with relative reset time
+- Second segment: 7-day weekly quota usage with reset day + local time
 - Color-coded: green -> yellow -> red as usage increases
 
 ### How it works
@@ -97,7 +123,7 @@ The poll script reads OAuth tokens from (in order):
 
 If neither source has a valid, non-expired token, the poll is silently skipped.
 
-### Statusline setup
+### Claude statusline setup
 
 Copy `statusline.js` to `~/.claude/` and add to `~/.claude/settings.json`:
 
@@ -110,7 +136,7 @@ Copy `statusline.js` to `~/.claude/` and add to `~/.claude/settings.json`:
 }
 ```
 
-The statusline also shows git status (branch, staged, modified, untracked, ahead/behind, worktree detection) and context window usage.
+The statusline also combines the project path with git status (branch, staged, modified, untracked, ahead/behind, worktree detection), followed by model, context usage, and quota bars in that order.
 
 ## Session naming
 
