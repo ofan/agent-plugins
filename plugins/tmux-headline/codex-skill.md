@@ -1,3 +1,7 @@
+---
+type: skill
+---
+
 # tmux-headline (Codex)
 
 After completing your response, set a headline in the pane title using the new data directory.
