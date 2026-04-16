@@ -1,5 +1,6 @@
 ---
 type: skill
+description: Set pane title headline for tmux window tabs
 ---
 
 # tmux-headline (Codex)
