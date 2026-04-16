@@ -84,7 +84,7 @@ function projectGitSegment(cwdRaw, git) {
 
 function planUsage() {
   try {
-    const f = os.homedir() + '/.claude/headline/usage.json';
+    const f = os.homedir() + '/.local/share/tmux-headline/data/usage.json';
     // Search for poll script in known plugin install locations
     const pluginDirs = [
       '/.claude/scripts/usage-poll.sh',                                                        // user-copied stable location

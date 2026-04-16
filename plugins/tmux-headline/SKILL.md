@@ -1,40 +1,20 @@
----
-name: tmux-headline
-description: Show Claude Code session headlines in tmux window tabs and pane borders. Auto-detects the tmux pane, writes a short task summary after each response, and pushes it to tmux. Requires the tmux-headline Claude Code plugin for hook support.
-install: claude plugin marketplace add ofan/agent-plugins && claude plugin install tmux-headline@ofan-plugins
----
-
 # tmux-headline
 
-Shows a 3-6 word summary of what Claude is working on in your tmux window tab and pane border. Updates automatically after each response. For Codex, use tmux pane titles plus `~/.codex/config.toml` segment ordering rather than Claude hooks.
+Shows a 1-3 word summary of what your coding agent is working on in tmux window tabs and pane borders. Animated braille spinner when busy, static when idle.
 
-## How it works
+## Protocol
 
-1. After each response, Claude writes a short headline to `~/.claude/headline/headlines/{session_id}.headline`
-2. The Stop hook detects the tmux pane (via TTY) and sets `@headline` and `@pane_headline` tmux options
-3. tmux displays the headline in window tabs and pane borders
+Headlines are extracted automatically from conversation transcripts by hook scripts — agents don't need to do anything. The hooks/extension set pane_title via escape sequences or `tmux select-pane -T`:
 
-For Codex, there are no equivalent headline hooks here. The practical integration is:
+- **Busy**: `⠋ headline` → cycling braille (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ at ~200ms)
+- **Idle**: `⠿ headline` (static)
+- **End**: `""` (cleared)
 
-1. Codex writes `terminal_title`
-2. tmux renders `pane_title` for Codex panes
-3. Codex's native bottom status bar is configured separately in `~/.codex/config.toml`
+tmux format strings read `pane_title` directly — no custom options, no CLI calls needed for display.
 
 ## Install
 
-```bash
-# Add the marketplace
-claude plugin marketplace add ofan/agent-plugins
-
-# Install the plugin
-claude plugin install tmux-headline@ofan-plugins
-```
-
-Then add to your `~/.tmux.conf`:
-
-```tmux
-# Show headline in window tabs (with spinner)
-set -g window-status-format " #I #{?#{@headline},#[fg=colour244]#{=18:@headline},#W} "
-set -g window-status-current-format "#[fg=colour15,bg=colour239,bold] #I #{?#{@headline},#{=18:@headline},#W} #[default]"
-set -g status-interval 1
-```
+1. Add `set -g @plugin 'ofan/tmux-headline'` to `~/.tmux.conf` (TPM)
+2. Install agent hooks: `claude plugin install tmux-headline`
+3. For Pi: `cp extensions/tmux-status.ts ~/.pi/agent/extensions/`
+4. Codex works out of the box

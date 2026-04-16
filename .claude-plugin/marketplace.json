@@ -1,6 +1,6 @@
 {
   "name": "ofan-plugins",
-  "description": "Claude Code plugins by ofan",
+  "description": "Agent plugins by ofan",
   "owner": {
     "name": "ofan",
     "url": "https://github.com/ofan"
@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "tmux-headline",
-      "description": "Shows Claude session headlines in tmux pane borders and window tabs",
+      "description": "tmux headlines, spinner/title integration, and usage bars for Claude and Codex workflows",
       "version": "1.0.0",
       "source": "./plugins/tmux-headline"
     }

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Poll Claude API for subscription usage (5h/7d limits)
 # Sends a minimal Haiku request to read rate limit headers
-# Writes results to ~/.claude/headline/usage.json
+# Writes results to ~/.local/share/tmux-headline/data/usage.json
 # Supports both file-based credentials and macOS keychain
 set -f
 
-USAGE_FILE="$HOME/.claude/headline/usage.json"
+USAGE_FILE="$HOME/.local/share/tmux-headline/data/usage.json"
 
 python3 << 'PYEOF'
 import json, os, platform, subprocess, sys, time
@@ -14,7 +14,7 @@ try:
 except ImportError:
     sys.exit(0)
 
-usage_file = os.path.expanduser("~/.claude/headline/usage.json")
+usage_file = os.path.expanduser("~/.local/share/tmux-headline/data/usage.json")
 
 # Skip if polled recently (< 60s)
 try:
