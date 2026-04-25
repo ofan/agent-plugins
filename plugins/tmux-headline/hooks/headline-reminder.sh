@@ -1,52 +1,52 @@
 #!/usr/bin/env bash
-# UserPromptSubmit: detect pane, set up tmux formats, set busy title.
-# Runs every time the user sends a message — marks the pane as busy.
+# UserPromptSubmit hook: extract a ≤4-word compressed headline from the
+# user's prompt and return it as `sessionTitle` in hookSpecificOutput.
+# Claude Code applies it natively (same effect as /rename) — its own
+# cycling spinner continues to drive pane_title with our short text.
+#
+# No daemons, no file writes, no race with Claude — Claude does it all.
 
 set -euo pipefail
 
 INPUT=$(cat)
-SESSION_ID=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null)
+echo "$INPUT" | python3 -c '
+import json, re, sys
 
-if [ -z "$SESSION_ID" ]; then
-  echo '{}'
-  exit 0
-fi
+STOP = {"a","an","the","and","or","but","in","on","at","to","for","of","is","it",
+        "can","you","please","could","would","should","do","did","this","that",
+        "my","me","i","we","our","be","have","has","had","will","just","also",
+        "with","from","into","about","not","no","so","if","when","how","what",
+        "why","where","which","some","all","any","up","out","now","then","here",
+        "there","very","really","let","got","go","going","want","need","try",
+        "using","look","sure","know","think","see","hey","hi","hello","its",
+        "like","been","was","were","are","does","done","too","more","still",
+        # ack/filler words — keep prior headline rather than clobber with these
+        "yes","yeah","yep","ok","okay","alright","thanks","thank","cool","nice"}
 
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-HOMEDATA="$HOME/.local/share/tmux-headline"
-PDATA_DIR="$HOMEDATA/data"
-HEADLINE_DIR="$HOMEDATA/headlines"
-mkdir -p "$HEADLINE_DIR"
+def compress(text: str) -> str:
+    words = re.findall(r"[a-z]+", text.lower())
+    keep = [w for w in words if w not in STOP and len(w) > 1]
+    return " ".join(keep[:4])
 
-# Detect and persist pane ID
-PANE_FILE="$HEADLINE_DIR/${SESSION_ID}.pane"
-if [ ! -f "$PANE_FILE" ]; then
-  PANE="${TMUX_PANE:-$("$PLUGIN_ROOT/scripts/detect-pane.sh" 2>/dev/null)}"
-  [ -n "$PANE" ] && echo "$PANE" > "$PANE_FILE"
-fi
-PANE=$(cat "$PANE_FILE" 2>/dev/null)
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print("{}")
+    sys.exit(0)
 
-[ -z "$PANE" ] && { echo '{}'; exit 0; }
+prompt = data.get("prompt") or ""
+current = (data.get("session_title") or "").strip().lower()
+title = compress(prompt)
 
-# One-time tmux format setup (idempotent)
-if ! tmux show -gv @headline_ready 2>/dev/null | grep -q 1; then
-  bash "$PLUGIN_ROOT/headline.tmux" 2>/dev/null
-  tmux set -g @headline_ready 1 2>/dev/null
-fi
+# Skip if extraction empty or unchanged
+if not title or title == current:
+    print("{}")
+    sys.exit(0)
 
-# Mark as agent pane
-tmux set-option -p -t "$PANE" @agent 1 2>/dev/null || true
-
-# Set busy title with existing headline (if any), or just spinner
-HEADLINE_FILE="$HEADLINE_DIR/${SESSION_ID}.headline"
-HEADLINE=""
-[ -f "$HEADLINE_FILE" ] && HEADLINE=$(head -c 40 "$HEADLINE_FILE" | tr -d '\n')
-
-if [ -n "$HEADLINE" ]; then
-  "$PLUGIN_ROOT/scripts/title.sh" -p "$PANE" "⠋ $HEADLINE"
-else
-  "$PLUGIN_ROOT/scripts/title.sh" -p "$PANE" "⠋"
-fi
-
-echo '{}'
-exit 0
+print(json.dumps({
+    "hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "sessionTitle": title
+    }
+}))
+'

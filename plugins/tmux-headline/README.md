@@ -1,22 +1,33 @@
 # tmux-headline
 
-Shows a 1-3 word summary of what your coding agent is working on in tmux window tabs and pane borders. Animated braille spinner when busy, static when idle.
+Compresses each turn into a ≤4-word headline and displays it in tmux. Each agent provides its own cycling spinner natively — this plugin just keeps the title text short.
 
-Works with **Claude Code**, **Codex**, and **Pi** — all using the same protocol.
+Works with **Claude Code**, **Codex**, and **Pi**.
 
-## Protocol
+## v1.2 — how it works
 
-Every agent sets its own **pane title** via ANSI escape sequence (`\033]2;...\007`) or `tmux select-pane -T`:
+```
+User submits prompt:  "fix the overly long claude headlines extra words"
+                                         │
+plugin's UserPromptSubmit hook compresses ↓ to ≤4 words
+                                         │
+                          {"sessionTitle": "fix overly long claude"}
+                                         │
+                  Claude Code applies it (same as /rename)
+                                         │
+              Claude writes its native cycling pane_title:
+                          "✳ fix overly long claude"
+                                         │
+              tmux's pane-border-format displays #{pane_title}
+```
 
-| State | pane_title | Example |
-|-------|-----------|---------|
-| Busy | `⠋ headline` → cycling braille | `⠋ fix auth bug` → `⠙ fix auth bug` → ... |
-| Idle | `⠿ headline` (static) | `⠿ fix auth bug` |
-| End | `""` (empty) | |
+No daemon. No file fight. No 4-word title clobbered by the agent. Each agent keeps its native spinner; the plugin just controls the text.
 
-The agent cycles 10 braille frames at ~200ms when busy. tmux reads `pane_title` directly in its format strings — no custom tmux options needed.
-
-Headlines are also persisted to `~/.local/share/tmux-headline/headlines/{session_id}.headline` for cross-session recovery.
+| Agent | Title source | Spinner |
+|-------|--------------|---------|
+| Claude | sessionTitle hook output (this plugin) | Claude's native `✳`-family animation |
+| Pi | in-process `setInterval` (`extensions/tmux-status.ts`) | Native braille at 100ms |
+| Codex | Codex itself | Codex's native frames |
 
 ## Install
 
@@ -27,9 +38,9 @@ Headlines are also persisted to `~/.local/share/tmux-headline/headlines/{session
 set -g @plugin 'ofan/tmux-headline'
 ```
 
-Reload: `prefix + I` to install, or `tmux source ~/.tmux.conf`.
+Reload: `prefix + I` (TPM) or `tmux source ~/.tmux.conf`.
 
-Without TPM, source it directly:
+Without TPM:
 
 ```tmux
 run-shell /path/to/tmux-headline/headline.tmux
@@ -37,45 +48,80 @@ run-shell /path/to/tmux-headline/headline.tmux
 
 ### 2. Agent hooks
 
-**Claude Code** — install the plugin:
+**Claude Code:**
 
 ```bash
 claude plugin install tmux-headline
 ```
 
-Hooks handle: headline injection (`UserPromptSubmit`), idle sync (`Stop`), cleanup (`SessionEnd`).
+Hooks: `UserPromptSubmit` (emit sessionTitle), `Stop` (background usage poll), `SessionEnd` (cleanup).
 
-**Pi** — copy the extension:
+**Pi:**
 
 ```bash
 cp extensions/tmux-status.ts ~/.pi/agent/extensions/
 ```
 
-Extension handles: headline injection, busy/idle title, cleanup.
+**Codex:** works out of the box. Codex writes `pane_title` natively.
 
-**Codex** — works out of the box. Codex sets pane_title natively with its own spinner. The tmux format picks it up automatically.
+## What this plugin sets in tmux
 
-## How it works
+Conservatively, only **two** globals — and each is gated on user defaults:
 
+| Option | Set when | Why |
+|--------|----------|-----|
+| `pane-border-status` | currently `off` (default) | needed to display the title above each pane |
+| `pane-border-format` | currently default/empty | renders `#{pane_title}` with index + cwd |
+
+Plus:
+
+- `allow-rename on` — required for any agent (Claude/Pi/Codex) to set `pane_title` via OSC.
+
+If you have your own `pane-border-format`, the plugin **doesn't touch it**. To opt into the recommended format manually:
+
+```tmux
+set -g pane-border-status top
+set -g pane-border-format "#{pane_index} #[fg=colour90]#{pane_title}#[default] #[fg=cyan]#{session_name}#[default] #[dim]#{b:pane_current_path}#[default]"
 ```
-Agent writes:  printf '\033]2;⠋ fix auth bug\007'
-                  │
-tmux reads:    #{pane_title} = "⠋ fix auth bug"  (or "⠿ fix auth bug" when idle)
-                  │
-Format shows: #{pane_title} directly for agent panes
-               else        → #W (window name) for non-agent panes
-```
 
-Window tabs show a braille spinner (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) cycling at 1fps when busy. Pane borders show the headline in color.
+For window tabs (opt-in — the plugin will not override your `window-status-format`):
+
+```tmux
+set -g window-status-format          " #I #[fg=colour244]#{=24:pane_title}#[default] "
+set -g window-status-current-format  "#[fg=colour15,bg=colour239,bold] #I #{pane_title} #[default]"
+```
 
 ## Files
 
 ```
-headline.tmux          TPM entrypoint — sets tmux formats
-hooks/                 Claude Code hooks (busy/idle/cleanup)
-extensions/            Pi extension (same protocol)
-scripts/spinner.sh     1fps braille frame for tmux #()
-scripts/detect-pane.sh Pane detection fallback
-scripts/usage-poll.sh  Claude subscription usage polling
-statusline.js          Rich statusline for Claude/Codex
+hooks/headline-reminder.sh  UserPromptSubmit — extract ≤4-word title, return sessionTitle
+hooks/stop-sync.sh          Stop — background usage poll
+hooks/session-end.sh        SessionEnd — cleanup residual files
+scripts/extract-headline.sh Transcript-mode extraction (used by Pi)
+scripts/spinner.sh          1fps braille frame utility (for tmux #() use)
+scripts/usage-poll.sh       Subscription usage poller (cheapest method confirmed: 9 tokens)
+scripts/git-status.sh       Git status helper (statusline.js)
+extensions/tmux-status.ts   Pi extension (independent codepath)
+statusline.js               Rich statusline for Claude/Codex
+headline.tmux               TPM entrypoint — sets the two globals (above)
 ```
+
+## Storage
+
+Plugin state lives in `~/.local/share/tmux-headline/`:
+
+- `data/usage.json` — subscription usage cache (60s throttled)
+- `data/spinner.pid` — legacy, removed when seen
+
+Pi continues to use `headlines/<sid>.headline` files; Claude no longer writes there (Claude persists the title in its own session metadata).
+
+## Uninstall
+
+The plugin is intentionally minimal so removal is one-line:
+
+```bash
+claude plugin uninstall tmux-headline       # removes hooks
+rm -rf ~/.local/share/tmux-headline         # removes state
+```
+
+If you added the TPM line manually, remove it from `~/.tmux.conf` and reload.

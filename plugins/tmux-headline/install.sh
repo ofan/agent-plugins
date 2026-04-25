@@ -60,7 +60,7 @@ if command -v claude &>/dev/null; then
     DEST=$(dirname "$(dirname "$INSTALLED_HOOKS")")
     cp "$PLUGIN_DIR"/hooks/*.sh "$DEST/hooks/" 2>/dev/null
     mkdir -p "$DEST/scripts"
-    cp "$PLUGIN_DIR"/scripts/{title,pane-spinner,detect-pane,spinner}.sh "$DEST/scripts/" 2>/dev/null
+    cp "$PLUGIN_DIR"/scripts/{extract-headline,spinner,usage-poll}.sh "$DEST/scripts/" 2>/dev/null
     chmod +x "$DEST"/hooks/*.sh "$DEST"/scripts/*.sh 2>/dev/null
     ok "hooks synced to $DEST"
   else

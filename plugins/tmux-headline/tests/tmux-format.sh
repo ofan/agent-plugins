@@ -1,138 +1,98 @@
 #!/usr/bin/env bash
-# Test tmux format rendering end-to-end.
-# Creates a throwaway tmux session, sets pane titles + @agent, captures output.
+# Test the v1.2 sessionTitle-based headline flow.
+#
+# Verifies headline-reminder.sh (UserPromptSubmit) emits the correct
+# hookSpecificOutput JSON for various inputs, and that the tmux format
+# script applies safely without overriding user customizations.
 set -uo pipefail
 
 PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-TEST_SESSION="headline-test-$$"
+HOOK="$PLUGIN_DIR/hooks/headline-reminder.sh"
 PASS=0 FAIL=0
 
-cleanup() { tmux kill-session -t "$TEST_SESSION" 2>/dev/null || true; }
-trap cleanup EXIT
-
-# ── helpers ───────────────────────────────────────────────────
-
-assert_contains() {
-  local label="$1" haystack="$2" needle="$3"
-  if [[ "$haystack" == *"$needle"* ]]; then
+assert_eq() {
+  local label="$1" actual="$2" expected="$3"
+  if [ "$actual" = "$expected" ]; then
     printf '  ✓ %s\n' "$label"; ((PASS++))
   else
-    printf '  ✗ %s\n    expected: %s\n    got:      %s\n' "$label" "$needle" "$haystack"; ((FAIL++))
+    printf '  ✗ %s\n    expected: %s\n    got:      %s\n' "$label" "$expected" "$actual"; ((FAIL++))
   fi
 }
 
-assert_not_contains() {
-  local label="$1" haystack="$2" needle="$3"
-  if [[ "$haystack" != *"$needle"* ]]; then
-    printf '  ✓ %s\n' "$label"; ((PASS++))
-  else
-    printf '  ✗ %s (should NOT contain "%s")\n    got: %s\n' "$label" "$needle" "$haystack"; ((FAIL++))
-  fi
+assert_json_field() {
+  local label="$1" json="$2" path="$3" expected="$4"
+  local got
+  got=$(echo "$json" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    for k in '$path'.split('.'):
+        d = d.get(k) if isinstance(d, dict) else None
+        if d is None: break
+    print(d if d is not None else '')
+except: print('')
+")
+  assert_eq "$label" "$got" "$expected"
 }
 
-fmt() { tmux display-message -p -t "$1" "$2" 2>/dev/null; }
-
-capture_border() {
-  local border_fmt
-  border_fmt=$(tmux show -gv pane-border-format 2>/dev/null)
-  [ -n "$border_fmt" ] && fmt "$1" "$border_fmt"
+run_hook() {
+  echo "$1" | bash "$HOOK"
 }
 
-# ── setup ─────────────────────────────────────────────────────
+# ── headline extraction & JSON output ─────────────────────────
 
-printf 'Setting up test session...\n'
-tmux new-session -d -s "$TEST_SESSION" -x 120 -y 24 "sleep 30"
-sleep 0.3
-bash "$PLUGIN_DIR/headline.tmux"
-sleep 0.2
-PANE=$(tmux list-panes -t "$TEST_SESSION" -F '#{pane_id}' | head -1)
+printf '\n── sessionTitle output ──\n'
 
-# ── test 1: agent pane detection ──────────────────────────────
+OUT=$(run_hook '{"prompt":"please fix the overly long claude headlines extra words","session_title":""}')
+assert_json_field "extracts ≤4-word headline" "$OUT" \
+  "hookSpecificOutput.sessionTitle" "fix overly long claude"
 
-printf '\n── @agent detection ──\n'
+OUT=$(run_hook '{"prompt":"add cycling spinner with claude glyphs","session_title":""}')
+assert_json_field "stopwords filtered" "$OUT" \
+  "hookSpecificOutput.sessionTitle" "add cycling spinner claude"
 
-# Without @agent, format should show #W
-tmux select-pane -t "$PANE" -T "some title"
-sleep 0.2
-WIN_FMT=$(tmux show -gv window-status-format)
-WIN_RENDERED=$(fmt "$PANE" "$WIN_FMT")
-assert_not_contains "no @agent → no title in tab" "$WIN_RENDERED" "some title"
+OUT=$(run_hook '{"prompt":"add cycling spinner with claude glyphs","session_title":"add cycling spinner claude"}')
+assert_eq "no-op when title unchanged" "$OUT" "{}"
 
-# With @agent, format should show pane_title
-tmux set-option -p -t "$PANE" @agent 1
-sleep 0.2
-WIN_RENDERED=$(fmt "$PANE" "$WIN_FMT")
-assert_contains "@agent → title in tab" "$WIN_RENDERED" "some title"
+OUT=$(run_hook '{"prompt":"yes ok thanks","session_title":""}')
+assert_eq "ack-only prompt → no-op (preserve prior title)" "$OUT" "{}"
 
-# ── test 2: Claude busy (flower glyphs) ──────────────────────
+OUT=$(run_hook 'not-json')
+assert_eq "malformed JSON → no-op (no crash)" "$OUT" "{}"
 
-printf '\n── Claude busy: ✽ fix auth bug ──\n'
-tmux select-pane -t "$PANE" -T "✽ fix auth bug"
-sleep 0.2
+OUT=$(run_hook '')
+assert_eq "empty stdin → no-op" "$OUT" "{}"
 
-TITLE=$(fmt "$PANE" '#{pane_title}')
-assert_contains "pane_title set" "$TITLE" "✽ fix auth bug"
+OUT=$(run_hook '{"prompt":"","session_title":"existing"}')
+assert_eq "empty prompt → no-op" "$OUT" "{}"
 
-WIN_RENDERED=$(fmt "$PANE" "$WIN_FMT")
-assert_contains "window tab shows flower + headline" "$WIN_RENDERED" "✽ fix auth bug"
+# ── hookEventName must be set correctly ────────────────────────
 
-BORDER=$(capture_border "$PANE")
-assert_contains "border shows title" "$BORDER" "✽ fix auth bug"
+printf '\n── hookSpecificOutput envelope ──\n'
 
-# ── test 3: Claude idle ──────────────────────────────────────
+OUT=$(run_hook '{"prompt":"build the new feature","session_title":""}')
+assert_json_field "hookEventName is UserPromptSubmit" "$OUT" \
+  "hookSpecificOutput.hookEventName" "UserPromptSubmit"
 
-printf '\n── Claude idle: · fix auth bug ──\n'
-tmux select-pane -t "$PANE" -T "· fix auth bug"
-sleep 0.2
+# ── extract-headline.sh (still used by Pi) ─────────────────────
 
-WIN_RENDERED=$(fmt "$PANE" "$WIN_FMT")
-assert_contains "window tab shows idle + headline" "$WIN_RENDERED" "· fix auth bug"
+printf '\n── extract-headline.sh transcript path (Pi compatibility) ──\n'
+TX=$(mktemp)
+cat > "$TX" <<'EOF'
+{"role":"user","content":"please refactor authentication module to support oauth providers"}
+EOF
+EXTRACTED=$(bash "$PLUGIN_DIR/scripts/extract-headline.sh" "$TX")
+rm -f "$TX"
+WC=$(echo "$EXTRACTED" | awk '{print NF}')
+if [ "$WC" -ge 1 ] && [ "$WC" -le 4 ]; then
+  printf '  ✓ extracted %d words (≤4): %s\n' "$WC" "$EXTRACTED"; ((PASS++))
+else
+  printf '  ✗ extracted %d words: %s\n' "$WC" "$EXTRACTED"; ((FAIL++))
+fi
 
-# ── test 4: Pi busy (braille) ────────────────────────────────
+# ── spinner.sh utility (Pi-style braille frame) ───────────────
 
-printf '\n── Pi busy: ⠋ refactor plugin ──\n'
-tmux select-pane -t "$PANE" -T "⠋ refactor plugin"
-sleep 0.2
-
-WIN_RENDERED=$(fmt "$PANE" "$WIN_FMT")
-assert_contains "window tab shows braille + headline" "$WIN_RENDERED" "refactor plugin"
-
-# ── test 5: Pi idle ──────────────────────────────────────────
-
-printf '\n── Pi idle: ⠿ refactor plugin ──\n'
-tmux select-pane -t "$PANE" -T "⠿ refactor plugin"
-sleep 0.2
-
-WIN_RENDERED=$(fmt "$PANE" "$WIN_FMT")
-assert_contains "window tab shows static + headline" "$WIN_RENDERED" "⠿ refactor plugin"
-
-# ── test 6: session end ──────────────────────────────────────
-
-printf '\n── Session end: cleared ──\n'
-tmux select-pane -t "$PANE" -T ""
-tmux set-option -p -t "$PANE" -u @agent
-sleep 0.2
-
-WIN_RENDERED=$(fmt "$PANE" "$WIN_FMT")
-assert_not_contains "no headline in tab after end" "$WIN_RENDERED" "refactor"
-assert_not_contains "no agent title after end" "$WIN_RENDERED" "⠿"
-
-# ── test 7: title.sh helper ──────────────────────────────────
-
-printf '\n── title.sh helper ──\n'
-TMUX_PANE="$PANE" bash "$PLUGIN_DIR/scripts/title.sh" -p "$PANE" "✢ testing"
-sleep 0.2
-TITLE=$(fmt "$PANE" '#{pane_title}')
-assert_contains "title.sh sets title" "$TITLE" "✢ testing"
-
-TMUX_PANE="$PANE" bash "$PLUGIN_DIR/scripts/title.sh" -p "$PANE" ""
-sleep 0.2
-TITLE=$(fmt "$PANE" '#{pane_title}')
-assert_contains "title.sh clears" "$TITLE" ""
-
-# ── test 8: spinner outputs valid braille ─────────────────────
-
-printf '\n── spinner.sh ──\n'
+printf '\n── spinner.sh utility ──\n'
 FRAME=$(bash "$PLUGIN_DIR/scripts/spinner.sh")
 BRAILLE="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 if [[ "$BRAILLE" == *"$FRAME"* ]] && [ ${#FRAME} -gt 0 ]; then
@@ -141,7 +101,22 @@ else
   printf '  ✗ spinner output not braille: %s\n' "$FRAME"; ((FAIL++))
 fi
 
-# ── results ───────────────────────────────────────────────────
+# ── headline.tmux is conservative about globals ───────────────
 
+printf '\n── headline.tmux preserves customizations ──\n'
+TS="hl-tmux-test-$$"
+tmux new-session -d -s "$TS" -x 120 -y 24 "sleep 30"
+sleep 0.2
+
+# User's pre-existing custom format
+CUSTOM='#{?pane_active,>>>,} #{pane_index}:#{pane_current_command}'
+tmux set -g pane-border-format "$CUSTOM"
+bash "$PLUGIN_DIR/headline.tmux" 2>/dev/null
+RESULT=$(tmux show -gv pane-border-format)
+assert_eq "respects user's pane-border-format" "$RESULT" "$CUSTOM"
+
+tmux kill-session -t "$TS" 2>/dev/null
+
+# ── results ───────────────────────────────────────────────────
 printf '\n══ %d passed, %d failed ══\n' "$PASS" "$FAIL"
 exit "$FAIL"

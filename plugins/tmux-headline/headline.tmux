@@ -2,25 +2,23 @@
 # TPM entrypoint — sources automatically via:
 #   set -g @plugin 'ofan/tmux-headline'
 #
-# Detection: @agent pane option (set by hooks/extension)
-#            or pane_current_command = node (Codex)
-#
-# Agent panes show pane_title (agents manage their own spinner + headline).
-# Other panes show #W (window name).
+# v1.2+ — Claude drives its own pane_title via the sessionTitle hook output.
+# This script just enables a pane border that displays that title.
+# The plugin no longer overrides window-status-format or other globals
+# (see README for an opt-in window-tab snippet).
 
-# Window tabs
-tmux set -g window-status-format \
-  " #I #{?#{||:#{@agent},#{==:#{pane_current_command},node}},#[fg=colour244]#{=24:pane_title}#[default],#W} "
+# Show pane title in a border above each pane (default tmux behavior is "off")
+if [ "$(tmux show -gv pane-border-status 2>/dev/null)" = "off" ]; then
+  tmux set -g pane-border-status top
+fi
 
-tmux set -g window-status-current-format \
-  "#[fg=colour15,bg=colour239,bold] #I #{?#{||:#{@agent},#{==:#{pane_current_command},node}},#{pane_title},#W} #[default]"
+# Render: index + pane_title (cyan) + cwd (dim). Only set if user hasn't customized.
+DEFAULT_BORDER='#{?pane_active,#[reverse],}#P #[default]"#{pane_title}"'
+CURRENT_BORDER="$(tmux show -gv pane-border-format 2>/dev/null)"
+if [ -z "$CURRENT_BORDER" ] || [ "$CURRENT_BORDER" = "$DEFAULT_BORDER" ]; then
+  tmux set -g pane-border-format \
+    "#{pane_index} #[fg=colour90]#{pane_title}#[default] #[fg=cyan]#{session_name}#[default] #[dim]#{b:pane_current_path}#[default]"
+fi
 
-tmux set -g status-interval 1
-
-# Pane borders
-tmux set -g pane-border-status top
-tmux set -g pane-border-format \
-  "#{pane_index} #{?#{@agent},#[fg=colour90]#{pane_title}#[default] ,}#[fg=cyan]#{session_name}#[default] #[dim]#{b:pane_current_path}#[default]"
-
-# Allow programs to set pane title
+# Allow programs to set pane title via OSC (Claude/Pi/Codex all need this)
 tmux set -g allow-rename on

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Extract a 1-3 word headline from conversation transcript.
+# Extract a 1-4 word headline from conversation transcript.
 # Supports both Claude Code (role at top level) and Pi (nested message.role) formats.
 # Usage: extract-headline.sh <transcript_path> [current_headline]
 set -euo pipefail
@@ -59,7 +59,7 @@ if not last:
 
 words = re.findall(r'[a-z]+', last.lower())
 keep = [w for w in words if w not in STOP and len(w) > 1]
-print(' '.join(keep[:3]))
+print(' '.join(keep[:4]))
 " "$TRANSCRIPT" 2>/dev/null) || true
 
 [ -z "$HEADLINE" ] && exit 0
