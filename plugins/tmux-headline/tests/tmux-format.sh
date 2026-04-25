@@ -111,10 +111,30 @@ sleep 0.2
 # User's pre-existing custom format
 CUSTOM='#{?pane_active,>>>,} #{pane_index}:#{pane_current_command}'
 tmux set -g pane-border-format "$CUSTOM"
+tmux set -g window-status-format "$CUSTOM"
 bash "$PLUGIN_DIR/headline.tmux" 2>/dev/null
 RESULT=$(tmux show -gv pane-border-format)
 assert_eq "respects user's pane-border-format" "$RESULT" "$CUSTOM"
+RESULT=$(tmux show -gv window-status-format)
+assert_eq "respects user's window-status-format" "$RESULT" "$CUSTOM"
 
+tmux kill-session -t "$TS" 2>/dev/null
+
+# ── headline.tmux applies window-tab format on default tmux ──
+printf '\n── headline.tmux applies on default tmux ──\n'
+TS="hl-tmux-default-$$"
+tmux new-session -d -s "$TS" -x 120 -y 24 "sleep 30"
+sleep 0.2
+# Reset to tmux defaults
+tmux set -gu window-status-format
+tmux set -gu pane-border-format
+bash "$PLUGIN_DIR/headline.tmux" 2>/dev/null
+RESULT=$(tmux show -gv window-status-format)
+if [[ "$RESULT" == *"pane_title"* ]]; then
+  printf '  ✓ window-status-format includes pane_title: %s\n' "$RESULT"; ((PASS++))
+else
+  printf '  ✗ window-status-format missing pane_title: %s\n' "$RESULT"; ((FAIL++))
+fi
 tmux kill-session -t "$TS" 2>/dev/null
 
 # ── results ───────────────────────────────────────────────────
