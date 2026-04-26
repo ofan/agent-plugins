@@ -1,32 +1,24 @@
 ---
 name: tmux-headline
-description: Shows a ≤4-word, heavily compressed headline of what your coding agent is working on in tmux. Claude drives its own native cycling spinner; the plugin just shortens the title.
+description: Shows a ≤4-word, heavily compressed headline of what your coding agent is working on in tmux. Claude drives the headline via a /headline slash command + a naming skill — no daemons, no hooks for headline.
 ---
 
 # tmux-headline
 
-Compresses each turn into ≤4 words and lets the agent display it natively in `pane_title` (with whatever cycling spinner the agent already animates). tmux just shows that title.
+Compresses each workstream into ≤4 words and lets Claude display it in `pane_title` via the `/headline` slash command. Each agent provides its own cycling spinner natively — this plugin just keeps the headline text short and right.
 
-## v1.2 protocol — Claude
+## v1.2.3 protocol — Claude
 
-The plugin no longer writes pane_title or runs spinners. It hooks **`UserPromptSubmit`** and returns:
+The plugin ships:
 
-```json
-{
-  "hookSpecificOutput": {
-    "hookEventName": "UserPromptSubmit",
-    "sessionTitle": "<compressed headline>"
-  }
-}
-```
+1. **`/headline <2-4 words>`** — slash command that validates input and writes `pane_title` via tmux.
+2. **`headline-naming` skill** — instructs Claude when to invoke `/headline`: at session start, on workstream shifts, when a recap reveals a new subject, etc. Skips meta-instructions and sub-tasks.
 
-Claude Code applies this internally (same effect as `/rename`) and continues its own native cycling spinner — `✳ <our short headline>` appears in `pane_title`. No daemon, no file writes, no race.
-
-Idempotent: hook input includes the current `session_title`; we no-op if unchanged.
+No UserPromptSubmit hook. No daemon. Claude calls `/headline` proactively via its built-in `SlashCommand` tool — visible in the conversation transcript.
 
 ## Pi (unchanged)
 
-Pi extension still runs in-process at `extensions/tmux-status.ts:151` with a 100ms `setInterval` braille spinner. The Pi side owns its own `pane_title` writes; this plugin's Claude-side changes don't affect it.
+Pi extension still runs in-process at `extensions/tmux-status.ts` with a 100ms `setInterval` braille spinner.
 
 ## Codex (unchanged)
 
@@ -34,6 +26,6 @@ Codex writes `pane_title` natively. tmux's `pane-border-format` reads it directl
 
 ## Install
 
-1. Add `set -g @plugin 'ofan/tmux-headline'` to `~/.tmux.conf` (TPM)
-2. Install agent hooks: `claude plugin install tmux-headline`
-3. For Pi: `cp extensions/tmux-status.ts ~/.pi/agent/extensions/`
+1. Add `set -g @plugin 'ofan/tmux-headline'` to `~/.tmux.conf`
+2. `claude plugin install tmux-headline`
+3. (Pi) `cp extensions/tmux-status.ts ~/.pi/agent/extensions/`
