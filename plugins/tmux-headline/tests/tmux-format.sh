@@ -160,6 +160,38 @@ else
   printf '  ✗ spinner output not braille: %s\n' "$FRAME"; ((FAIL++))
 fi
 
+# ── claude-spinner.sh + busy detection ────────────────────────
+
+printf '\n── claude-spinner.sh + ✳-busy detection ──\n'
+SP="$PLUGIN_DIR/scripts/claude-spinner.sh"
+if [ -x "$SP" ]; then
+  printf '  ✓ claude-spinner.sh executable\n'; ((PASS++))
+else
+  printf '  ✗ claude-spinner.sh not executable\n'; ((FAIL++))
+fi
+FRAME=$(bash "$SP")
+CLAUDE_FRAMES="✳✶✷✺✸✦"
+if [[ "$CLAUDE_FRAMES" == *"$FRAME"* ]] && [ ${#FRAME} -gt 0 ]; then
+  printf '  ✓ outputs Claude-family glyph: %s\n' "$FRAME"; ((PASS++))
+else
+  printf '  ✗ output not in Claude family: %s\n' "$FRAME"; ((FAIL++))
+fi
+
+# tmux pattern match: ✳-prefix triggers BUSY branch, others fall through
+$T new-session -d -s "spinner-test" -x 120 -y 24 "sleep 30"
+sleep 0.2
+COND='#{?#{m:✳ *,#{pane_title}},BUSY,IDLE}'
+$T select-pane -t "spinner-test" -T "✳ deploy auth"
+assert_eq "✳-prefix → BUSY" "$($T display-message -p -t spinner-test "$COND")" "BUSY"
+$T select-pane -t "spinner-test" -T "✻ deploy auth"
+assert_eq "✻-prefix → IDLE" "$($T display-message -p -t spinner-test "$COND")" "IDLE"
+$T select-pane -t "spinner-test" -T "deploy auth"
+assert_eq "no prefix → IDLE" "$($T display-message -p -t spinner-test "$COND")" "IDLE"
+$T select-pane -t "spinner-test" -T "✳ deploy auth"
+SUBST='#{s/^✳ //:pane_title}'
+assert_eq "✳-prefix stripping" "$($T display-message -p -t spinner-test "$SUBST")" "deploy auth"
+$T kill-session -t "spinner-test" 2>/dev/null
+
 # ── results ───────────────────────────────────────────────────
 printf '\n══ %d passed, %d failed ══\n' "$PASS" "$FAIL"
 exit "$FAIL"
