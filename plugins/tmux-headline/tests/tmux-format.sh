@@ -66,6 +66,23 @@ assert_eq "empty stdin → no-op" "$OUT" "{}"
 OUT=$(run_hook '{"prompt":"","session_title":"existing"}')
 assert_eq "empty prompt → no-op" "$OUT" "{}"
 
+# ── stickiness policy (v1.2.2) ────────────────────────────────
+
+printf '\n── stickiness policy ──\n'
+
+OUT=$(run_hook '{"prompt":"working?","session_title":""}')
+assert_eq "1-word with no current → no-op (below MIN_WORDS)" "$OUT" "{}"
+
+OUT=$(run_hook '{"prompt":"working?","session_title":"deploy production server"}')
+assert_eq "1-word cannot overwrite multi-word current" "$OUT" "{}"
+
+OUT=$(run_hook '{"prompt":"can you also fix the auth bug while at it","session_title":"fix auth bug"}')
+assert_eq "high overlap with current → no-op (same workstream)" "$OUT" "{}"
+
+OUT=$(run_hook '{"prompt":"now lets deploy production server","session_title":"fix auth bug"}')
+assert_json_field "low overlap → updates (topic shift)" "$OUT" \
+  "hookSpecificOutput.hookEventName" "UserPromptSubmit"
+
 # ── hookEventName must be set correctly ────────────────────────
 
 printf '\n── hookSpecificOutput envelope ──\n'

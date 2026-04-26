@@ -4,6 +4,12 @@
 # Claude Code applies it natively (same effect as /rename) — its own
 # cycling spinner continues to drive pane_title with our short text.
 #
+# Stickiness policy (v1.2.2): the headline should track the workstream,
+# not every prompt. We keep the current title unless the new candidate
+# meets BOTH:
+#   - has ≥ MIN_WORDS informative words
+#   - has low word-overlap with the current title (Jaccard < OVERLAP_MAX)
+#
 # No daemons, no file writes, no race with Claude — Claude does it all.
 
 set -euo pipefail
@@ -23,10 +29,25 @@ STOP = {"a","an","the","and","or","but","in","on","at","to","for","of","is","it"
         # ack/filler words — keep prior headline rather than clobber with these
         "yes","yeah","yep","ok","okay","alright","thanks","thank","cool","nice"}
 
-def compress(text: str) -> str:
+MIN_WORDS = 2     # candidate must have at least this many informative words
+MAX_WORDS = 4     # title is capped at this many
+OVERLAP_MAX = 0.34  # Jaccard similarity threshold — below = treat as topic shift
+
+def informative(text: str) -> list[str]:
     words = re.findall(r"[a-z]+", text.lower())
-    keep = [w for w in words if w not in STOP and len(w) > 1]
-    return " ".join(keep[:4])
+    return [w for w in words if w not in STOP and len(w) > 1]
+
+def should_update(current: str, candidate_words: list[str]) -> bool:
+    """Return True if the candidate represents a workstream change worth committing."""
+    if len(candidate_words) < MIN_WORDS:
+        return False
+    cur_words = set(informative(current))
+    if not cur_words:
+        return True  # no current title yet — anything informative wins
+    new_words = set(candidate_words)
+    union = cur_words | new_words
+    overlap = len(cur_words & new_words) / len(union)
+    return overlap < OVERLAP_MAX
 
 try:
     data = json.load(sys.stdin)
@@ -35,11 +56,11 @@ except Exception:
     sys.exit(0)
 
 prompt = data.get("prompt") or ""
-current = (data.get("session_title") or "").strip().lower()
-title = compress(prompt)
+current = (data.get("session_title") or "").strip()
+words = informative(prompt)
+title = " ".join(words[:MAX_WORDS])
 
-# Skip if extraction empty or unchanged
-if not title or title == current:
+if not title or title == current.lower() or not should_update(current, words):
     print("{}")
     sys.exit(0)
 
