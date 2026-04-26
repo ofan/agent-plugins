@@ -7,16 +7,13 @@
 # but only overrides options that are still at tmux's default value, so
 # user customizations are preserved.
 #
-# When pane_title starts with ✳ (Claude's "busy" marker), substitute a 1Hz
-# cycling glyph from claude-spinner.sh so the status bar shows motion.
-# Idle states (✻ etc.) and non-Claude prefixes pass through unchanged.
+# Title rendering is delegated to scripts/headline-render.sh — it cycles a
+# ✳-family spinner glyph while Claude is busy and passes through pane_title
+# unchanged when idle. Stop hook flips busy → ✻ on idle transition.
 
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
-SPINNER="$PLUGIN_DIR/scripts/claude-spinner.sh"
-
-# Format expression: if pane_title starts with "✳ ", swap that prefix for
-# a cycling spinner glyph. Otherwise show pane_title as-is.
-HEADLINE_EXPR="#{?#{m:✳ *,#{pane_title}},#($SPINNER) #{s/^✳ //:pane_title},#{pane_title}}"
+RENDER="$PLUGIN_DIR/scripts/headline-render.sh"
+HEADLINE_EXPR="#($RENDER #{pane_id})"
 
 tmux set -g status-interval 1
 
