@@ -2,16 +2,16 @@
 # TPM entrypoint — sources automatically via:
 #   set -g @plugin 'ofan/tmux-headline'
 #
-# Render embeds format codes (#[fg=...]) which tmux evaluates because we
-# wrap with #{E:...}. The glyph gets colored; the text stays in the
-# format's default style.
+# The headline is split into two #() calls in the format string:
+#   1. glyph piece — colored via #{?@claude_busy,...} conditional
+#   2. text piece  — uncolored, uses the format's default style
+# This keeps the glyph visually distinct without painting the headline text.
 
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 RENDER="$PLUGIN_DIR/scripts/headline-render.sh"
 
-# #{E:...} evaluates the script output as a format string, so embedded
-# #[fg=...] codes are interpreted (only the glyph is colored).
-HEADLINE_EXPR="#{E:#($RENDER #{pane_id})}"
+# Two #() calls: one for the glyph (colored), one for the text (default style)
+HEADLINE_EXPR="#{?@claude_busy,#[fg=brightyellow],#[fg=colour244]}#($RENDER #{pane_id} glyph)#[default] #($RENDER #{pane_id} text)"
 
 tmux set -g status-interval 1
 
