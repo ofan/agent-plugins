@@ -9,9 +9,10 @@
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 RENDER="$PLUGIN_DIR/scripts/headline-render.sh"
 
-# Format expression: glyph in conditional fg, then explicit fg=<text-color>
+# Format expression: glyph in conditional fg + bold, then explicit fg restore
 # for the text portion. The caller (each tab format) chooses the text color.
-HEADLINE_GLYPH="#{?@claude_busy,#[fg=brightyellow],#[fg=colour244]}#($RENDER #{pane_id} glyph)"
+# Note: commas inside #[...] must be escaped as #, when nested in #{?...,...}.
+HEADLINE_GLYPH="#{?@claude_busy,#[fg=brightyellow#,bold],#[fg=colour244#,bold]}#($RENDER #{pane_id} glyph)"
 HEADLINE_TEXT="#($RENDER #{pane_id} text)"
 
 tmux set -g status-interval 1
@@ -32,9 +33,9 @@ fi
 DEFAULT_WSF='#I:#W#{?window_flags,#{window_flags}, }'
 CURRENT_WSF="$(tmux show -gv window-status-format 2>/dev/null)"
 if [ -z "$CURRENT_WSF" ] || [ "$CURRENT_WSF" = "$DEFAULT_WSF" ]; then
-  # Inactive tab: status-style is colour248 fg, colour237 bg.
-  # Restore fg=colour248 after the glyph.
-  tmux set -g window-status-format " #I ${HEADLINE_GLYPH}#[fg=colour248] ${HEADLINE_TEXT} "
+  # Inactive tab: status-style is colour248 fg, colour237 bg, no bold.
+  # Glyph block set bold; #[default] resets bold and fg to status-style.
+  tmux set -g window-status-format " #I ${HEADLINE_GLYPH}#[default] ${HEADLINE_TEXT} "
 fi
 
 CURRENT_WSCF="$(tmux show -gv window-status-current-format 2>/dev/null)"
