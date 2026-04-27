@@ -1,5 +1,17 @@
 {
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/headline-busy.sh",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "matcher": "",

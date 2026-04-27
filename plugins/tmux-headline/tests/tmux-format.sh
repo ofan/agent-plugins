@@ -113,20 +113,16 @@ fi
 printf '\n── hooks.json ──\n'
 
 HOOKS=$(cat "$PLUGIN_DIR/hooks/hooks.json")
-if [[ "$HOOKS" != *"UserPromptSubmit"* ]]; then
-  printf '  ✓ UserPromptSubmit hook removed\n'; ((PASS++))
-else
-  printf '  ✗ UserPromptSubmit hook still present\n'; ((FAIL++))
-fi
-assert_contains "Stop hook still present" "$HOOKS" '"Stop"'
-assert_contains "SessionEnd hook still present" "$HOOKS" '"SessionEnd"'
+assert_contains "UserPromptSubmit hook wired (state-only, not headline)" "$HOOKS" "UserPromptSubmit"
+assert_contains "Stop hook present" "$HOOKS" '"Stop"'
+assert_contains "SessionEnd hook present" "$HOOKS" '"SessionEnd"'
 
 # ── headline-reminder.sh deleted ──────────────────────────────
 
 if [ ! -f "$PLUGIN_DIR/hooks/headline-reminder.sh" ]; then
-  printf '  ✓ headline-reminder.sh deleted\n'; ((PASS++))
+  printf '  ✓ legacy headline-reminder.sh deleted\n'; ((PASS++))
 else
-  printf '  ✗ headline-reminder.sh should be deleted\n'; ((FAIL++))
+  printf '  ✗ legacy headline-reminder.sh should be deleted\n'; ((FAIL++))
 fi
 
 # ── headline.tmux still preserves customizations ──────────────
@@ -160,9 +156,9 @@ else
   printf '  ✗ spinner output not braille: %s\n' "$FRAME"; ((FAIL++))
 fi
 
-# ── headline-render.sh: spinner cycle + idle passthrough ──────
+# ── headline-render.sh: busy-flag-driven spinner ──────────────
 
-printf '\n── headline-render.sh ──\n'
+printf '\n── headline-render.sh (state-flag-driven) ──\n'
 RENDER="$PLUGIN_DIR/scripts/headline-render.sh"
 if [ -x "$RENDER" ]; then
   printf '  ✓ headline-render.sh executable\n'; ((PASS++))
@@ -170,48 +166,69 @@ else
   printf '  ✗ headline-render.sh not executable\n'; ((FAIL++))
 fi
 
-# Test the case-statement logic by sourcing a stripped version that takes
-# TITLE as input directly (avoids needing a tmux shim).
+# Reproduce the render logic in pure bash, parameterized by busy flag.
+# (Avoids needing a tmux shim — render queries pane_title and @claude_busy
+# but the decision logic is what matters.)
 render_pure() {
-  local TITLE="$1"
+  local TITLE="$1" BUSY="$2"
+  local TEXT HAS_GLYPH=0
   case "$TITLE" in
-    ''|" "*|✻*|[a-zA-Z0-9]*) printf '%s' "$TITLE" ;;
-    *' '*)
-      local FRAMES=(✳ ✶ ✷ ✺ ✸ ✦)
-      local GLYPH="${FRAMES[$(date +%s) % ${#FRAMES[@]}]}"
-      printf '%s %s' "$GLYPH" "${TITLE#* }"
-      ;;
-    *) printf '%s' "$TITLE" ;;
+    ?' '*) TEXT="${TITLE#* }"; HAS_GLYPH=1 ;;
+    *) TEXT="$TITLE" ;;
   esac
+  if [ "$HAS_GLYPH" = "0" ] || [[ "$TITLE" =~ ^[a-zA-Z0-9] ]]; then
+    printf '%s' "$TITLE"; return
+  fi
+  if [ "$BUSY" = "1" ]; then
+    local FRAMES=(✳ ✶ ✷ ✺ ✸ ✦)
+    local GLYPH="${FRAMES[$(date +%s) % ${#FRAMES[@]}]}"
+    printf '%s %s' "$GLYPH" "$TEXT"
+  else
+    printf '✻ %s' "$TEXT"
+  fi
 }
 
-# Verify the script and our local copy agree (same case patterns)
-SCRIPT_PATTERNS=$(grep -E "^[[:space:]]*('[^']*'\|)+" "$RENDER" | wc -l)
-[ "$SCRIPT_PATTERNS" -ge 1 ] || { printf '  ✗ render script pattern lines missing\n'; ((FAIL++)); }
-
 CLAUDE_FRAMES="✳✶✷✺✸✦"
-OUT=$(render_pure "✳ deploy auth")
+
+# busy=1 → cycle stars regardless of which glyph Claude wrote
+OUT=$(render_pure "✳ deploy auth" 1)
 FIRST="${OUT:0:1}"
 [[ "$CLAUDE_FRAMES" == *"$FIRST"* ]] && [ "${OUT:1}" = " deploy auth" ] \
-  && { printf '  ✓ ✳-prefix → cycling glyph + text: %s\n' "$OUT"; ((PASS++)); } \
-  || { printf '  ✗ ✳-prefix mishandled: %s\n' "$OUT"; ((FAIL++)); }
+  && { printf '  ✓ busy + ✳-prefix → cycling: %s\n' "$OUT"; ((PASS++)); } \
+  || { printf '  ✗ busy+✳ mishandled: %s\n' "$OUT"; ((FAIL++)); }
 
-OUT=$(render_pure "⠂ deploy auth")
+OUT=$(render_pure "⠂ deploy auth" 1)
 FIRST="${OUT:0:1}"
 [[ "$CLAUDE_FRAMES" == *"$FIRST"* ]] && [ "${OUT:1}" = " deploy auth" ] \
-  && { printf '  ✓ ⠂-prefix (braille busy) → cycling glyph: %s\n' "$OUT"; ((PASS++)); } \
-  || { printf '  ✗ ⠂-prefix mishandled: %s\n' "$OUT"; ((FAIL++)); }
+  && { printf '  ✓ busy + braille-prefix → cycling stars (override): %s\n' "$OUT"; ((PASS++)); } \
+  || { printf '  ✗ busy+⠂ mishandled: %s\n' "$OUT"; ((FAIL++)); }
 
-OUT=$(render_pure "⠐ deploy auth")
-FIRST="${OUT:0:1}"
-[[ "$CLAUDE_FRAMES" == *"$FIRST"* ]] && [ "${OUT:1}" = " deploy auth" ] \
-  && { printf '  ✓ ⠐-prefix → cycling glyph: %s\n' "$OUT"; ((PASS++)); } \
-  || { printf '  ✗ ⠐-prefix mishandled: %s\n' "$OUT"; ((FAIL++)); }
+# busy=0 → always ✻, regardless of glyph
+assert_eq "idle + ✳-prefix → ✻ (override)" "$(render_pure "✳ deploy auth" 0)" "✻ deploy auth"
+assert_eq "idle + ⠂-prefix → ✻ (override)" "$(render_pure "⠂ deploy auth" 0)" "✻ deploy auth"
+assert_eq "idle + ⠐-prefix → ✻ (override)" "$(render_pure "⠐ deploy auth" 0)" "✻ deploy auth"
+assert_eq "idle + ✻-prefix → ✻ (passthrough effectively)" "$(render_pure "✻ deploy auth" 0)" "✻ deploy auth"
 
-assert_eq "✻-prefix → passthrough" "$(render_pure "✻ deploy auth")" "✻ deploy auth"
-assert_eq "plain text → passthrough" "$(render_pure "deploy auth")" "deploy auth"
-assert_eq "empty → empty" "$(render_pure "")" ""
-assert_eq "no-space single glyph → passthrough" "$(render_pure "✳alone")" "✳alone"
+# Plain text always passes through
+assert_eq "plain text + busy → passthrough" "$(render_pure "deploy auth" 1)" "deploy auth"
+assert_eq "plain text + idle → passthrough" "$(render_pure "deploy auth" 0)" "deploy auth"
+assert_eq "empty → empty" "$(render_pure "" 1)" ""
+
+# ── busy hook present + hooks.json wires UserPromptSubmit ──────
+
+printf '\n── busy hook + hooks.json ──\n'
+[ -x "$PLUGIN_DIR/hooks/headline-busy.sh" ] \
+  && { printf '  ✓ headline-busy.sh exists & executable\n'; ((PASS++)); } \
+  || { printf '  ✗ headline-busy.sh missing\n'; ((FAIL++)); }
+
+HOOKS_JSON=$(cat "$PLUGIN_DIR/hooks/hooks.json")
+assert_contains "hooks.json wires UserPromptSubmit" "$HOOKS_JSON" "UserPromptSubmit"
+assert_contains "hooks.json points at headline-busy.sh" "$HOOKS_JSON" "headline-busy.sh"
+
+assert_contains "stop-sync sets @claude_busy=0" \
+  "$(cat "$PLUGIN_DIR/hooks/stop-sync.sh")" "@claude_busy 0"
+assert_contains "headline-busy sets @claude_busy=1" \
+  "$(cat "$PLUGIN_DIR/hooks/headline-busy.sh")" "@claude_busy 1"
 
 # ── results ───────────────────────────────────────────────────
 printf '\n══ %d passed, %d failed ══\n' "$PASS" "$FAIL"

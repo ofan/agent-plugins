@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
-# Render the headline for a tmux pane: cycle through ✳-family glyphs while
-# Claude is busy, otherwise passthrough pane_title as-is.
+# Render the headline for a tmux pane.
+# - Busy state (per-pane @claude_busy=1, set by UserPromptSubmit hook):
+#   replace any prefix glyph with a 1Hz cycling ✳-family frame.
+# - Idle state (@claude_busy=0 or unset, set by Stop hook):
+#   replace any prefix glyph with static ✻.
+# - No glyph prefix in pane_title (plain text or empty): passthrough.
 #
-# Usage: headline-render.sh <pane_id>
-#
-# "busy" detection: pane_title starts with a non-alphanumeric glyph followed
-# by a space — covers ✳ (Claude's "thinking" OSC) and the single-dot braille
-# prefixes Claude writes for other busy states.
-#
-# Idle markers (✻, leading space, empty, alphanumeric prefix) pass through.
-#
-# Stop hook is responsible for flipping busy → ✻ on transition (Claude
-# doesn't issue an idle OSC sequence on its own).
+# Busy/idle is determined ONLY from the @claude_busy tmux option, not from
+# the prefix glyph in pane_title — Claude's own OSC writes are unreliable
+# (continues writing dot-cycle in waiting-for-input mode).
 
 set -uo pipefail
 
@@ -21,19 +18,32 @@ PANE="${1:-}"
 TITLE=$(tmux display-message -p -t "$PANE" '#{pane_title}' 2>/dev/null) || exit 0
 [ -z "$TITLE" ] && exit 0
 
+# Read the busy flag (set by UserPromptSubmit, cleared by Stop)
+BUSY=$(tmux show-options -p -v -t "$PANE" @claude_busy 2>/dev/null || true)
+
+# Identify whether pane_title has a single-glyph + space prefix to strip
 case "$TITLE" in
-  # idle / non-glyph prefixes — pass through unchanged
-  ''|" "*|✻*|[a-zA-Z0-9]*)
-    printf '%s' "$TITLE"
-    ;;
-  # glyph prefix followed by a space — swap glyph for cycling frame
-  *' '*)
-    FRAMES=(✳ ✶ ✷ ✺ ✸ ✦)
-    GLYPH="${FRAMES[$(date +%s) % ${#FRAMES[@]}]}"
-    printf '%s %s' "$GLYPH" "${TITLE#* }"
+  ?' '*)
+    # Detect Unicode (>1 byte) glyph at byte 0 — strip "<glyph> " prefix
+    TEXT="${TITLE#* }"
+    HAS_GLYPH=1
     ;;
   *)
-    # single-glyph or unknown shape — pass through
-    printf '%s' "$TITLE"
+    TEXT="$TITLE"
+    HAS_GLYPH=0
     ;;
 esac
+
+if [ "$HAS_GLYPH" = "0" ] || [[ "$TITLE" =~ ^[a-zA-Z0-9] ]]; then
+  # Plain text — passthrough
+  printf '%s' "$TITLE"
+  exit 0
+fi
+
+if [ "$BUSY" = "1" ]; then
+  FRAMES=(✳ ✶ ✷ ✺ ✸ ✦)
+  GLYPH="${FRAMES[$(date +%s) % ${#FRAMES[@]}]}"
+  printf '%s %s' "$GLYPH" "$TEXT"
+else
+  printf '✻ %s' "$TEXT"
+fi
