@@ -3,17 +3,15 @@
 #   set -g @plugin 'ofan/tmux-headline'
 #
 # v1.2+ — Claude drives its own pane_title via the /headline slash command.
-# This script enables a pane border + window tabs that surface that title,
-# but only overrides options that are still at tmux's default value, so
-# user customizations are preserved.
-#
-# Title rendering is delegated to scripts/headline-render.sh — it cycles a
-# ✳-family spinner glyph while Claude is busy and passes through pane_title
-# unchanged when idle. Stop hook flips busy → ✻ on idle transition.
+# Conditional coloring happens here in the format string (not in the render
+# script): @claude_busy=1 → brightyellow; otherwise → dim grey.
 
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 RENDER="$PLUGIN_DIR/scripts/headline-render.sh"
-HEADLINE_EXPR="#($RENDER #{pane_id})"
+
+# Colored render: outer format picks color based on @claude_busy, render
+# script outputs plain "<glyph> <text>" with no embedded format codes.
+HEADLINE_EXPR="#{?@claude_busy,#[fg=brightyellow],#[fg=colour244]}#($RENDER #{pane_id})#[default]"
 
 tmux set -g status-interval 1
 
@@ -26,15 +24,14 @@ DEFAULT_BORDER='#{?pane_active,#[reverse],}#P #[default]"#{pane_title}"'
 CURRENT_BORDER="$(tmux show -gv pane-border-format 2>/dev/null)"
 if [ -z "$CURRENT_BORDER" ] || [ "$CURRENT_BORDER" = "$DEFAULT_BORDER" ]; then
   tmux set -g pane-border-format \
-    "#{pane_index} #[fg=colour90]${HEADLINE_EXPR}#[default] #[fg=cyan]#{session_name}#[default] #[dim]#{b:pane_current_path}#[default]"
+    "#{pane_index} ${HEADLINE_EXPR} #[fg=cyan]#{session_name}#[default] #[dim]#{b:pane_current_path}#[default]"
 fi
 
 # 2. window tabs — surface pane_title in the bottom status bar
 DEFAULT_WSF='#I:#W#{?window_flags,#{window_flags}, }'
 CURRENT_WSF="$(tmux show -gv window-status-format 2>/dev/null)"
 if [ -z "$CURRENT_WSF" ] || [ "$CURRENT_WSF" = "$DEFAULT_WSF" ]; then
-  tmux set -g window-status-format \
-    " #I #[fg=colour244]${HEADLINE_EXPR}#[default] "
+  tmux set -g window-status-format " #I ${HEADLINE_EXPR} "
 fi
 
 CURRENT_WSCF="$(tmux show -gv window-status-current-format 2>/dev/null)"

@@ -1,14 +1,8 @@
 #!/usr/bin/env bash
-# Render the headline for a tmux pane.
-# - Busy state (per-pane @claude_busy=1, set by UserPromptSubmit hook):
-#   replace any prefix glyph with a 1Hz cycling ✳-family frame in
-#   bright yellow.
-# - Idle state (@claude_busy=0 or unset, set by Stop hook):
-#   replace any prefix glyph with static ✻ in dim grey.
-# - No glyph prefix in pane_title (plain text or empty): passthrough.
-#
-# Busy/idle is determined ONLY from the @claude_busy tmux option, not from
-# the prefix glyph in pane_title.
+# Render the headline for a tmux pane (plain text — outer format handles color).
+# - Busy state (@claude_busy=1):  cycling ✳-family glyph + text
+# - Idle state (@claude_busy=0):  static ✻ + text
+# - Plain pane_title (no glyph prefix): passthrough
 
 set -uo pipefail
 
@@ -39,7 +33,7 @@ fi
 if [ "$BUSY" = "1" ]; then
   FRAMES=(✳ ✶ ✷ ✺ ✸ ✦)
   GLYPH="${FRAMES[$(date +%s) % ${#FRAMES[@]}]}"
-  printf '#[fg=brightyellow]%s#[default] %s' "$GLYPH" "$TEXT"
+  printf '%s %s' "$GLYPH" "$TEXT"
 else
-  printf '#[fg=colour244]✻#[default] %s' "$TEXT"
+  printf '✻ %s' "$TEXT"
 fi
