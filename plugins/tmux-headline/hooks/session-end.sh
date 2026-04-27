@@ -10,7 +10,8 @@ HEADLINE_DIR="$HOME/.local/share/tmux-headline/headlines"
 if [ -n "$SESSION_ID" ]; then
   rm -f "$HEADLINE_DIR/${SESSION_ID}.headline" \
         "$HEADLINE_DIR/${SESSION_ID}.busy" \
-        "$HEADLINE_DIR/${SESSION_ID}.pane"
+        "$HEADLINE_DIR/${SESSION_ID}.pane" \
+        "$HEADLINE_DIR/${SESSION_ID}.last_good"
 fi
 
 echo '{}'

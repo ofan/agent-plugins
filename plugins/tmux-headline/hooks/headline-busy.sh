@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # UserPromptSubmit hook with two responsibilities:
 #   1. State: set per-pane @claude_busy=1 so headline-render.sh cycles.
-#   2. Stickiness guard: keep sessionTitle from being clobbered by Claude
-#      Code's auto-title fallback when the user types a meta/short prompt.
+#   2. Stickiness guard: prevent Claude Code's firstPrompt fallback from
+#      degrading sessionTitle to a single user word ("tldr", "test").
 #
-# The smart renaming path is the /headline command + naming skill — those
-# stay authoritative for genuine workstream shifts. This hook only emits
-# a sessionTitle when:
-#   - the user's prompt yields ≥2 informative words (compress + emit), OR
-#   - the current sessionTitle is already a good ≥2-word label (re-emit
-#     to prevent firstPrompt fallback from overwriting it).
-# Otherwise emits {} and lets things alone.
+# The smart renaming path is the /headline command + naming skill. This
+# hook is just a guard against degradation. It picks sessionTitle by
+# preference:
+#   1. compressed candidate from this prompt (if ≥2 informative words)
+#   2. current sessionTitle (if ≥2 words)
+#   3. saved last-good title from per-session file (if any)
+# A successful pick is also written to the state file so future degraded
+# turns can recover from it.
 
 set -euo pipefail
 
@@ -23,7 +24,7 @@ fi
 
 # 2. Stickiness guard
 echo "$INPUT" | python3 -c '
-import json, re, sys
+import json, os, re, sys
 
 STOP = {"a","an","the","and","or","but","in","on","at","to","for","of","is","it",
         "can","you","please","could","would","should","do","did","this","that",
@@ -37,6 +38,7 @@ STOP = {"a","an","the","and","or","but","in","on","at","to","for","of","is","it"
 
 MIN_WORDS = 2
 MAX_WORDS = 4
+DATA_DIR = os.path.expanduser("~/.local/share/tmux-headline/headlines")
 
 def compress(text):
     words = re.findall(r"[a-z]+", text.lower())
@@ -48,27 +50,46 @@ try:
 except Exception:
     print("{}"); sys.exit(0)
 
-prompt = data.get("prompt") or ""
-current = (data.get("session_title") or "").strip()
+prompt   = data.get("prompt") or ""
+current  = (data.get("session_title") or "").strip()
+sid      = data.get("session_id") or ""
+
+# Per-session state file: remembers the last good headline so meta prompts
+# can recover after a degradation.
+state_path = os.path.join(DATA_DIR, f"{sid}.last_good") if sid else None
+last_good = ""
+if state_path and os.path.exists(state_path):
+    try:
+        with open(state_path) as f:
+            last_good = f.read().strip()
+    except Exception:
+        pass
+
 candidate = compress(prompt)
-
 cand_words = len(candidate.split())
-cur_words = len(current.split())
+cur_words  = len(current.split())
 
-# Pick: candidate if good, else current if good, else nothing
 if cand_words >= MIN_WORDS:
     emit = candidate
 elif cur_words >= MIN_WORDS:
     emit = current
+elif last_good:
+    emit = last_good
 else:
     emit = ""
 
 if not emit:
     print("{}"); sys.exit(0)
 
-# Always emit when we have a good label — even if equal to the reported
-# current — so Claude Code persists customTitle and the firstPrompt
-# fallback can never re-clobber the headline on a meta/short prompt.
+# Persist any successful pick — this is what makes recovery possible.
+if state_path:
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(state_path, "w") as f:
+            f.write(emit)
+    except Exception:
+        pass
+
 print(json.dumps({
     "hookSpecificOutput": {
         "hookEventName": "UserPromptSubmit",
