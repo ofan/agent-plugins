@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Render the headline for a tmux pane (plain text — outer format handles color).
-# - Busy state (@claude_busy=1):  cycling ✳-family glyph + text
-# - Idle state (@claude_busy=0):  static ✻ + text
-# - Plain pane_title (no glyph prefix): passthrough
+# Render the headline for a tmux pane WITH embedded format codes — must be
+# wrapped in #{E:...} in the format string so tmux evaluates them.
+#
+# Output: <colored-glyph> <text-in-default-format>
+# - Busy (@claude_busy=1): brightyellow cycling glyph + reset color for text
+# - Idle (@claude_busy=0): colour244 dim ✻ + reset color for text
+# - Plain pane_title (no glyph prefix): passthrough as-is (no codes)
 
 set -uo pipefail
 
@@ -33,7 +36,9 @@ fi
 if [ "$BUSY" = "1" ]; then
   FRAMES=(✳ ✶ ✷ ✺ ✸ ✦)
   GLYPH="${FRAMES[$(date +%s) % ${#FRAMES[@]}]}"
-  printf '%s %s' "$GLYPH" "$TEXT"
+  # brightyellow glyph, reset to default style for the text
+  printf '#[fg=brightyellow]%s#[default] %s' "$GLYPH" "$TEXT"
 else
-  printf '✻ %s' "$TEXT"
+  # dim grey ✻, reset for text
+  printf '#[fg=colour244]✻#[default] %s' "$TEXT"
 fi
