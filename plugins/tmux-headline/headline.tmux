@@ -10,8 +10,9 @@
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 RENDER="$PLUGIN_DIR/scripts/headline-render.sh"
 
-# Two #() calls: one for the glyph (colored), one for the text (default style)
-HEADLINE_EXPR="#{?@claude_busy,#[fg=brightyellow],#[fg=colour244]}#($RENDER #{pane_id} glyph)#[default] #($RENDER #{pane_id} text)"
+# Two #() calls: one for the glyph (colored, scoped via push/pop-default so
+# only the glyph fg changes — the surrounding bg/style of the tab stays)
+HEADLINE_EXPR="#[push-default]#{?@claude_busy,#[fg=brightyellow],#[fg=colour244]}#($RENDER #{pane_id} glyph)#[pop-default] #($RENDER #{pane_id} text)"
 
 tmux set -g status-interval 1
 
