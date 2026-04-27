@@ -2,17 +2,17 @@
 # TPM entrypoint — sources automatically via:
 #   set -g @plugin 'ofan/tmux-headline'
 #
-# The headline is split into two #() calls in the format string:
-#   1. glyph piece — colored via #{?@claude_busy,...} conditional
-#   2. text piece  — uncolored, uses the format's default style
-# This keeps the glyph visually distinct without painting the headline text.
+# Headline format colors only the glyph (one char). The text fg is restored
+# explicitly after the glyph since tmux's #[default]/push-default/pop-default
+# behaves unexpectedly mid-tab (resets to global status-style).
 
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 RENDER="$PLUGIN_DIR/scripts/headline-render.sh"
 
-# Two #() calls: one for the glyph (colored, scoped via push/pop-default so
-# only the glyph fg changes — the surrounding bg/style of the tab stays)
-HEADLINE_EXPR="#[push-default]#{?@claude_busy,#[fg=brightyellow],#[fg=colour244]}#($RENDER #{pane_id} glyph)#[pop-default] #($RENDER #{pane_id} text)"
+# Format expression: glyph in conditional fg, then explicit fg=<text-color>
+# for the text portion. The caller (each tab format) chooses the text color.
+HEADLINE_GLYPH="#{?@claude_busy,#[fg=brightyellow],#[fg=colour244]}#($RENDER #{pane_id} glyph)"
+HEADLINE_TEXT="#($RENDER #{pane_id} text)"
 
 tmux set -g status-interval 1
 
@@ -25,20 +25,23 @@ DEFAULT_BORDER='#{?pane_active,#[reverse],}#P #[default]"#{pane_title}"'
 CURRENT_BORDER="$(tmux show -gv pane-border-format 2>/dev/null)"
 if [ -z "$CURRENT_BORDER" ] || [ "$CURRENT_BORDER" = "$DEFAULT_BORDER" ]; then
   tmux set -g pane-border-format \
-    "#{pane_index} ${HEADLINE_EXPR} #[fg=cyan]#{session_name}#[default] #[dim]#{b:pane_current_path}#[default]"
+    "#{pane_index} ${HEADLINE_GLYPH}#[fg=colour248] ${HEADLINE_TEXT} #[fg=cyan]#{session_name}#[default] #[dim]#{b:pane_current_path}#[default]"
 fi
 
 # 2. window tabs
 DEFAULT_WSF='#I:#W#{?window_flags,#{window_flags}, }'
 CURRENT_WSF="$(tmux show -gv window-status-format 2>/dev/null)"
 if [ -z "$CURRENT_WSF" ] || [ "$CURRENT_WSF" = "$DEFAULT_WSF" ]; then
-  tmux set -g window-status-format " #I ${HEADLINE_EXPR} "
+  # Inactive tab: status-style is colour248 fg, colour237 bg.
+  # Restore fg=colour248 after the glyph.
+  tmux set -g window-status-format " #I ${HEADLINE_GLYPH}#[fg=colour248] ${HEADLINE_TEXT} "
 fi
 
 CURRENT_WSCF="$(tmux show -gv window-status-current-format 2>/dev/null)"
 if [ -z "$CURRENT_WSCF" ] || [ "$CURRENT_WSCF" = "$DEFAULT_WSF" ]; then
+  # Active tab: bg=colour239, fg=colour15, bold. Restore fg=colour15 after glyph.
   tmux set -g window-status-current-format \
-    "#[fg=colour15,bg=colour239,bold] #I ${HEADLINE_EXPR} #[default]"
+    "#[fg=colour15,bg=colour239,bold] #I ${HEADLINE_GLYPH}#[fg=colour15] ${HEADLINE_TEXT} #[default]"
 fi
 
 # 3. allow programs to set pane title via OSC
