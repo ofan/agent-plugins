@@ -31,12 +31,16 @@ else
   exit 1
 fi
 
-# Source tmux formats
-if [ -n "${TMUX:-}" ]; then
+# Apply tmux formats. Works whenever a tmux server is running, not just when
+# the installer itself is inside a tmux session — `tmux set -g` reaches the
+# server via the socket. headline.tmux self-detects legacy fork-storm formats
+# (`#(headline-render.sh ...)` substring) and resets them, so re-running after
+# an upgrade is safe and idempotent.
+if tmux info >/dev/null 2>&1; then
   bash "$PLUGIN_DIR/headline.tmux"
-  ok "tmux formats applied"
+  ok "tmux formats applied to running server"
 else
-  skip "tmux formats" "not inside tmux — will apply on next session"
+  skip "tmux formats" "no tmux server running — will apply on next start"
 fi
 
 # Add to tmux.conf if not already there
@@ -53,16 +57,22 @@ fi
 printf '\n── Claude Code ──\n'
 
 if command -v claude &>/dev/null; then
-  # Check if plugin is already installed
-  INSTALLED_HOOKS=$(find ~/.claude/plugins -path '*tmux-headline*/hooks.json' 2>/dev/null | head -1)
-  if [ -n "$INSTALLED_HOOKS" ]; then
-    # Sync latest hooks to installed location
-    DEST=$(dirname "$(dirname "$INSTALLED_HOOKS")")
-    cp "$PLUGIN_DIR"/hooks/*.sh "$DEST/hooks/" 2>/dev/null
-    mkdir -p "$DEST/scripts"
-    cp "$PLUGIN_DIR"/scripts/{extract-headline,spinner,usage-poll}.sh "$DEST/scripts/" 2>/dev/null
-    chmod +x "$DEST"/hooks/*.sh "$DEST"/scripts/*.sh 2>/dev/null
-    ok "hooks synced to $DEST"
+  # Sync to every installed location. Claude Code keeps two copies:
+  #   - cache/ofan-plugins/tmux-headline/<version>/  (runtime — hooks read here)
+  #   - marketplaces/ofan-plugins/plugins/tmux-headline/  (source clone)
+  # The cache is the load-bearing one; the marketplace clone gets clobbered on
+  # next refresh, but syncing both keeps a fresh install consistent.
+  mapfile -t INSTALLED_HOOKS < <(find ~/.claude/plugins -path '*tmux-headline*/hooks.json' 2>/dev/null)
+  if [ "${#INSTALLED_HOOKS[@]}" -gt 0 ]; then
+    for hooks_json in "${INSTALLED_HOOKS[@]}"; do
+      DEST=$(dirname "$(dirname "$hooks_json")")
+      cp "$PLUGIN_DIR"/hooks/*.sh "$DEST/hooks/" 2>/dev/null
+      cp "$PLUGIN_DIR"/headline.tmux "$DEST/" 2>/dev/null
+      mkdir -p "$DEST/scripts"
+      cp "$PLUGIN_DIR"/scripts/*.sh "$DEST/scripts/" 2>/dev/null
+      chmod +x "$DEST/headline.tmux" "$DEST"/hooks/*.sh "$DEST"/scripts/*.sh 2>/dev/null
+      ok "synced to ${DEST/#$HOME/~}"
+    done
   else
     # Try installing via claude CLI
     if claude plugin install tmux-headline 2>/dev/null; then
@@ -112,7 +122,7 @@ if [ "$ERR" -gt 0 ]; then
   exit 1
 fi
 
-if [ "$SKIP" -gt 0 ] || [ -z "${TMUX:-}" ]; then
+if ! tmux info >/dev/null 2>&1; then
   printf '\nReload tmux config:  tmux source ~/.tmux.conf\n'
 fi
 

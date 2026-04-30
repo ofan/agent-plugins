@@ -2,22 +2,64 @@
 # TPM entrypoint — sources automatically via:
 #   set -g @plugin 'ofan/tmux-headline'
 #
-# Headline format colors only the glyph (one char). The text fg is restored
-# explicitly after the glyph since tmux's #[default]/push-default/pop-default
-# behaves unexpectedly mid-tab (resets to global status-style).
+# Daemon-driven spinner edition. Format reads #{@spinner_glyph} (zero forks
+# per status tick) and a background loop updates that option at 2Hz while
+# any pane has @claude_busy=1. tmux's status-interval is integer-seconds
+# only, so faster animation needs an external ticker; #() inside formats
+# would re-introduce per-tick fork costs.
+#
+# Cost: ~0.3% of one core when nothing is busy (1 IPC/sec poll), ~1.5% while
+# busy (2Hz set+refresh). See scripts/spinner-loop.sh for the loop itself.
+
+set -uo pipefail
 
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
-RENDER="$PLUGIN_DIR/scripts/headline-render.sh"
 
-# Format expression: glyph in conditional fg + bold, then explicit fg restore
-# for the text portion. The caller (each tab format) chooses the text color.
-# Note: commas inside #[...] must be escaped as #, when nested in #{?...,...}.
-HEADLINE_GLYPH="#{?@claude_busy,#[fg=brightyellow#,bold],#[fg=colour244#,bold]}#($RENDER #{pane_id} glyph)"
-HEADLINE_TEXT="#($RENDER #{pane_id} text)"
+# Colored glyph block:
+#  - busy → bright yellow bold + #{@spinner_glyph} (updated by spinner-loop.sh).
+#    Falls back to a literal ✳ if the daemon hasn't ticked yet so the format
+#    never renders empty.
+#  - idle → dim + bold static ✻.
+# Note: commas inside #[...] must be escaped as #, whenever the block is
+# consumed inside a #{?cond,then,else} expression.
+GLYPH_BUSY='#[fg=brightyellow#,bold]#{?@spinner_glyph,#{@spinner_glyph},✳}'
+GLYPH_IDLE='#[fg=colour244#,bold]✻'
+GLYPH_BLOCK="#{?#{==:#{@claude_busy},1},${GLYPH_BUSY},${GLYPH_IDLE}}"
 
-# Whether @claude_busy is set on this pane (used to opt non-Claude panes —
-# Pi, Codex, etc. — out of our styled render and just show pane_title).
+# Detect "pane_title starts with one of our known glyphs" — claude-set spinner
+# glyphs (✻ ✳ ✶ ✷ ✺ ✸ ✦), the pi/codex passthrough glyph (⠿), or any braille
+# in U+2801..U+28FF. #{=1:VAR} truncates to one display column (UTF-8 aware).
+HAS_GLYPH='#{m:[⠁-⣿✻✳✶✷✺✸✦⠿]*,#{=1:#{pane_title}}}'
+
+# pane_title with leading "<glyph-or-word> " prefix stripped (BRE: any
+# non-space sequence followed by space). Only used inside the HAS_GLYPH
+# branch, so we never chop off legitimate first words like "Some Title".
+TITLE_TEXT='#{s/^[^ ][^ ]* //:#{pane_title}}'
+
+# Whether this pane is a Claude pane (@claude_busy is 0 or 1). Used to opt
+# Pi/Codex/plain shells out of styled rendering — they get pane_title only.
 CLAUDE_PANE='#{||:#{==:#{@claude_busy},1},#{==:#{@claude_busy},0}}'
+
+# Two variants: inactive tab restores fg via #[default], active tab restores
+# to colour15 (the active-tab fg).
+HEADLINE_INACTIVE="#{?${CLAUDE_PANE},#{?${HAS_GLYPH},${GLYPH_BLOCK}#[default] ${TITLE_TEXT},#{pane_title}},#{pane_title}}"
+HEADLINE_ACTIVE="#{?${CLAUDE_PANE},#{?${HAS_GLYPH},${GLYPH_BLOCK}#[fg=colour15] ${TITLE_TEXT},#{pane_title}},#{pane_title}}"
+
+# Recognize formats produced by any prior version of this plugin so re-running
+# `headline.tmux` (e.g. on upgrade) reliably swaps in the current version.
+# Patterns:
+#   1. v1.2.x and earlier: #(headline-render.sh ...) shell calls.
+#   2. v1.3.x intermediate / current fork-free: the HAS_GLYPH match expression
+#      uses the unique class [⠁-⣿✻✳✶✷✺✸✦⠿] which is specific to this plugin.
+# Re-applying the same format is harmless (idempotent), so a slightly broad
+# match here is fine; the goal is to never get stuck on an old version.
+is_legacy() {
+  case "$1" in
+    *headline-render.sh*)        return 0 ;;
+    *'[⠁-⣿✻✳✶✷✺✸✦⠿]'*)           return 0 ;;
+    *)                           return 1 ;;
+  esac
+}
 
 tmux set -g status-interval 1
 
@@ -28,28 +70,37 @@ fi
 
 DEFAULT_BORDER='#{?pane_active,#[reverse],}#P #[default]"#{pane_title}"'
 CURRENT_BORDER="$(tmux show -gv pane-border-format 2>/dev/null)"
-if [ -z "$CURRENT_BORDER" ] || [ "$CURRENT_BORDER" = "$DEFAULT_BORDER" ]; then
+if [ -z "$CURRENT_BORDER" ] || [ "$CURRENT_BORDER" = "$DEFAULT_BORDER" ] || is_legacy "$CURRENT_BORDER"; then
   tmux set -g pane-border-format \
-    "#{pane_index} #{?${CLAUDE_PANE},${HEADLINE_GLYPH}#[fg=colour248] ${HEADLINE_TEXT},#{pane_title}} #[fg=cyan]#{session_name}#[default] #[dim]#{b:pane_current_path}#[default]"
+    "#{pane_index} ${HEADLINE_INACTIVE} #[fg=cyan]#{session_name}#[default] #[dim]#{b:pane_current_path}#[default]"
 fi
 
 # 2. window tabs
 DEFAULT_WSF='#I:#W#{?window_flags,#{window_flags}, }'
+
 CURRENT_WSF="$(tmux show -gv window-status-format 2>/dev/null)"
-if [ -z "$CURRENT_WSF" ] || [ "$CURRENT_WSF" = "$DEFAULT_WSF" ]; then
-  # Inactive tab: status-style is colour248 fg, colour237 bg, no bold.
-  # Glyph block set bold; #[default] resets bold and fg to status-style.
-  # Non-Claude panes (Pi, Codex) get plain pane_title — preserves their
-  # native cycling/static glyphs that we have no business overriding.
-  tmux set -g window-status-format " #I #{?${CLAUDE_PANE},${HEADLINE_GLYPH}#[default] ${HEADLINE_TEXT},#{pane_title}} "
+if [ -z "$CURRENT_WSF" ] || [ "$CURRENT_WSF" = "$DEFAULT_WSF" ] || is_legacy "$CURRENT_WSF"; then
+  tmux set -g window-status-format " #I ${HEADLINE_INACTIVE} "
 fi
 
 CURRENT_WSCF="$(tmux show -gv window-status-current-format 2>/dev/null)"
-if [ -z "$CURRENT_WSCF" ] || [ "$CURRENT_WSCF" = "$DEFAULT_WSF" ]; then
-  # Active tab: bg=colour239, fg=colour15, bold. Restore fg=colour15 after glyph.
+if [ -z "$CURRENT_WSCF" ] || [ "$CURRENT_WSCF" = "$DEFAULT_WSF" ] || is_legacy "$CURRENT_WSCF"; then
   tmux set -g window-status-current-format \
-    "#[fg=colour15,bg=colour239,bold] #I #{?${CLAUDE_PANE},${HEADLINE_GLYPH}#[fg=colour15] ${HEADLINE_TEXT},#{pane_title}} #[default]"
+    "#[fg=colour15,bg=colour239,bold] #I ${HEADLINE_ACTIVE} #[default]"
 fi
 
 # 3. allow programs to set pane title via OSC
 tmux set -g allow-rename on
+
+# 4. start (or restart) the ticker daemon — drives @spinner_glyph at 2Hz so
+# tmux can animate sub-second despite status-interval being integer-seconds.
+# Idempotent: catch any stragglers by full path (PID file alone misses orphans
+# left over from previous installs that crashed without removing their pidfile).
+TICKER="$PLUGIN_DIR/scripts/tmux-headline-ticker.sh"
+TICKER_PID="/tmp/tmux-headline-ticker.${USER}.pid"
+pkill -f "$TICKER" 2>/dev/null || true
+rm -f "$TICKER_PID"
+if [ -x "$TICKER" ]; then
+  nohup "$TICKER" >/dev/null 2>&1 &
+  disown 2>/dev/null || true
+fi
