@@ -9,8 +9,14 @@
     {
       "name": "tmux-headline",
       "description": "tmux headlines, spinner/title integration, and usage bars for Claude and Codex workflows",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "source": "./plugins/tmux-headline"
+    },
+    {
+      "name": "deepclaude",
+      "description": "Claude Code launcher and proxy for DeepSeek/OpenRouter/Fireworks with live backend switching",
+      "version": "0.2.0",
+      "source": "./plugins/deepclaude"
     }
   ]
 }

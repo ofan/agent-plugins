@@ -1,0 +1,185 @@
+#!/bin/sh
+# deepclaude - local launcher for Claude Code via DeepSeek/OpenRouter/etc.
+
+set -eu
+
+REAL_DEEPCLAUDE="$HOME/.local/share/deepclaude/deepclaude.sh"
+PROXY_SCRIPT="$HOME/.local/share/deepclaude/proxy/start-proxy.js"
+PROXY_PORT="${DEEPCLAUDE_PROXY_PORT:-3200}"
+PROXY_PID=""
+PROXY_LOG="${TMPDIR:-/tmp}/deepclaude-proxy.$$"
+
+if [ ! -x "$REAL_DEEPCLAUDE" ]; then
+  echo "deepclaude: missing $REAL_DEEPCLAUDE" >&2
+  echo "deepclaude: install with: git clone https://github.com/aattaran/deepclaude.git ~/.local/share/deepclaude" >&2
+  exit 1
+fi
+
+if [ ! -f "$PROXY_SCRIPT" ]; then
+  echo "deepclaude: missing $PROXY_SCRIPT" >&2
+  exit 1
+fi
+
+# Prefer per-shell env vars. If absent, try the local 1Password convention:
+# one item named "deepseek" with a DEEPSEEK_API_KEY field.
+if [ -z "${DEEPSEEK_API_KEY:-}" ] && [ -x "$HOME/bin/op" ]; then
+  eval "$("$HOME/bin/op" env deepseek --export 2>/dev/null || true)"
+fi
+
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+export CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1
+
+cleanup_proxy() {
+  if [ -n "$PROXY_PID" ] && kill -0 "$PROXY_PID" 2>/dev/null; then
+    kill "$PROXY_PID" 2>/dev/null || true
+    wait "$PROXY_PID" 2>/dev/null || true
+  fi
+  rm -f "$PROXY_LOG"
+}
+
+trap cleanup_proxy EXIT INT TERM
+
+mode="${CHEAPCLAUDE_DEFAULT_BACKEND:-deepseek}"
+passthrough=0
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --status|--cost|--benchmark|--help|-h|--switch|-s|--remote|-r)
+      passthrough=1
+      break
+      ;;
+    --direct)
+      passthrough=1
+      shift
+      break
+      ;;
+    --backend|-b)
+      shift
+      [ $# -gt 0 ] || { echo "deepclaude: --backend requires a value" >&2; exit 2; }
+      case "$1" in
+        ds|deepseek) mode="deepseek" ;;
+        or|openrouter) mode="openrouter" ;;
+        fw|fireworks) mode="fireworks" ;;
+        anthropic) mode="anthropic" ;;
+        *) echo "deepclaude: unknown backend '$1'" >&2; exit 2 ;;
+      esac
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+case "$mode" in
+  ds|deepseek) mode="deepseek" ;;
+  or|openrouter) mode="openrouter" ;;
+  fw|fireworks) mode="fireworks" ;;
+  anthropic) mode="anthropic" ;;
+  *) echo "deepclaude: unknown backend '$mode'" >&2; exit 2 ;;
+esac
+
+if [ "$passthrough" -eq 1 ]; then
+  exec "$REAL_DEEPCLAUDE" "$@" --dangerously-skip-permissions
+fi
+
+case "$mode" in
+  deepseek)
+    [ -n "${DEEPSEEK_API_KEY:-}" ] || { echo "deepclaude: DEEPSEEK_API_KEY is not set" >&2; exit 1; }
+    target_url="https://api.deepseek.com/anthropic"
+    target_key="$DEEPSEEK_API_KEY"
+    opus_model="deepseek-v4-pro"
+    sonnet_model="deepseek-v4-pro"
+    haiku_model="deepseek-v4-flash"
+    subagent_model="deepseek-v4-flash"
+    ;;
+  openrouter)
+    [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "deepclaude: OPENROUTER_API_KEY is not set" >&2; exit 1; }
+    target_url="https://openrouter.ai/api/v1"
+    target_key="$OPENROUTER_API_KEY"
+    opus_model="deepseek/deepseek-v4-pro"
+    sonnet_model="deepseek/deepseek-v4-pro"
+    haiku_model="deepseek/deepseek-v4-pro"
+    subagent_model="deepseek/deepseek-v4-pro"
+    ;;
+  fireworks)
+    [ -n "${FIREWORKS_API_KEY:-}" ] || { echo "deepclaude: FIREWORKS_API_KEY is not set" >&2; exit 1; }
+    target_url="https://api.fireworks.ai/inference/v1"
+    target_key="$FIREWORKS_API_KEY"
+    opus_model="accounts/fireworks/models/deepseek-v4-pro"
+    sonnet_model="accounts/fireworks/models/deepseek-v4-pro"
+    haiku_model="accounts/fireworks/models/deepseek-v4-pro"
+    subagent_model="accounts/fireworks/models/deepseek-v4-pro"
+    ;;
+  anthropic)
+    if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
+      target_url="https://api.deepseek.com/anthropic"
+      target_key="$DEEPSEEK_API_KEY"
+    elif [ -n "${OPENROUTER_API_KEY:-}" ]; then
+      target_url="https://openrouter.ai/api/v1"
+      target_key="$OPENROUTER_API_KEY"
+    elif [ -n "${FIREWORKS_API_KEY:-}" ]; then
+      target_url="https://api.fireworks.ai/inference/v1"
+      target_key="$FIREWORKS_API_KEY"
+    else
+      echo "deepclaude: at least one proxy backend key is required to start the proxy" >&2
+      exit 1
+    fi
+    opus_model=""
+    sonnet_model=""
+    haiku_model=""
+    subagent_model=""
+    ;;
+esac
+
+if curl -fsS "http://127.0.0.1:$PROXY_PORT/_proxy/status" >/dev/null 2>&1; then
+  echo "deepclaude: using existing proxy on 127.0.0.1:$PROXY_PORT"
+else
+  CHEAPCLAUDE_TARGET_URL="$target_url" CHEAPCLAUDE_API_KEY="$target_key" \
+    node "$PROXY_SCRIPT" >"$PROXY_LOG" 2>&1 &
+  PROXY_PID=$!
+
+  i=0
+  while [ "$i" -lt 50 ]; do
+    if curl -fsS "http://127.0.0.1:$PROXY_PORT/_proxy/status" >/dev/null 2>&1; then
+      break
+    fi
+    if ! kill -0 "$PROXY_PID" 2>/dev/null; then
+      echo "deepclaude: proxy failed to start" >&2
+      sed -n '1,80p' "$PROXY_LOG" >&2
+      exit 1
+    fi
+    i=$((i + 1))
+    sleep 0.1
+  done
+
+  if [ "$i" -ge 50 ]; then
+    echo "deepclaude: proxy did not become ready on 127.0.0.1:$PROXY_PORT" >&2
+    sed -n '1,80p' "$PROXY_LOG" >&2
+    exit 1
+  fi
+
+  echo "deepclaude: started proxy on 127.0.0.1:$PROXY_PORT (mode: $mode)"
+fi
+
+curl -fsS -X POST "http://127.0.0.1:$PROXY_PORT/_proxy/mode" -d "backend=$mode" >/dev/null || {
+  echo "deepclaude: failed to switch proxy to $mode" >&2
+  exit 1
+}
+
+export ANTHROPIC_BASE_URL="http://127.0.0.1:$PROXY_PORT"
+if [ "$mode" = "anthropic" ]; then
+  unset ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL
+  unset ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SUBAGENT_MODEL
+else
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="$opus_model"
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="$sonnet_model"
+  export ANTHROPIC_DEFAULT_HAIKU_MODEL="$haiku_model"
+  export CLAUDE_CODE_SUBAGENT_MODEL="$subagent_model"
+fi
+
+claude "$@" --dangerously-skip-permissions
