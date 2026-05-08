@@ -3,6 +3,12 @@
 Packaged Claude Code launcher and local model proxy for DeepSeek, OpenRouter,
 Fireworks, and Anthropic, with slash commands for live backend switching.
 
+This plugin packages and extends the original
+[aattaran/deepclaude](https://github.com/aattaran/deepclaude) project for the
+Claude plugin marketplace. The local changes add plugin installation, slash
+commands, shared proxy sessions, per-session backend switching, and idle proxy
+shutdown.
+
 ## Commands
 
 | Command | Description |
@@ -76,3 +82,11 @@ claude plugin install deepclaude@ofan-plugins
 
 After plugin install, run the plugin installer from the installed plugin
 directory or from this repository checkout.
+
+## Upstream
+
+Original project: [aattaran/deepclaude](https://github.com/aattaran/deepclaude).
+
+This repository is a packaged variant maintained for `ofan/agent-plugins`; send
+plugin packaging issues here, and upstream DeepClaude behavior questions to the
+original repository when they reproduce there.

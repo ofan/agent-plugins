@@ -6,7 +6,7 @@ Agent plugin marketplace by [ofan](https://github.com/ofan), covering Claude-ori
 
 | Plugin | Description |
 |--------|-------------|
-| [deepclaude](plugins/deepclaude/) | Claude Code launcher and proxy for DeepSeek/OpenRouter/Fireworks with live backend switching |
+| [deepclaude](plugins/deepclaude/) | Packaged [DeepClaude](https://github.com/aattaran/deepclaude) launcher and proxy for DeepSeek/OpenRouter/Fireworks with live backend switching |
 | [tmux-headline](plugins/tmux-headline/) | tmux headlines, spinner/title integration, and usage bars for Claude and Codex workflows |
 
 ## Install
