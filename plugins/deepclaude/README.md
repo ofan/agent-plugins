@@ -21,9 +21,10 @@ Install the packaged launcher once:
 ./install.sh
 ```
 
-Then start Claude Code through `deepclaude`. The launcher starts the local
-proxy, points `ANTHROPIC_BASE_URL` at it, and stops the proxy when Claude exits.
-The proxy defaults to `http://127.0.0.1:3200`.
+Then start Claude Code through `deepclaude`. The launcher starts or reuses the
+local shared proxy, assigns the Claude instance a `DEEPCLAUDE_SESSION_ID`, and
+points `ANTHROPIC_BASE_URL` at the proxy. The proxy defaults to
+`http://127.0.0.1:3200`.
 
 ```sh
 deepclaude
@@ -40,6 +41,28 @@ FIREWORKS_API_KEY=...
 The packaged proxy preserves DeepSeek thinking blocks end-to-end. For OpenRouter
 and Fireworks, thinking blocks are stripped or converted because those backends
 do not reliably support Anthropic thinking replay.
+
+## Shared proxy model
+
+Multiple `deepclaude` instances can share one proxy. Backend mode is tracked per
+`DEEPCLAUDE_SESSION_ID`, so `/deepseek` in one Claude session does not switch
+another session that is using `/openrouter`.
+
+The launcher sends the session token to the proxy as the local
+`ANTHROPIC_AUTH_TOKEN`. The proxy consumes that token for routing and replaces it
+with the provider key before forwarding model requests.
+
+By default, a launcher that starts the proxy leaves it running for other sessions.
+Set `DEEPCLAUDE_STOP_PROXY_ON_EXIT=1` if you want the starter session to stop its
+own proxy on exit.
+
+### Limits
+
+- Resuming a transcript that was already corrupted by missing thinking blocks can
+  still fail; start a fresh session or compact past the bad turns.
+- DeepSeek preserves thinking replay. OpenRouter and Fireworks do not.
+- `/anthropic` inside a shared-proxy session is best-effort passthrough. For a
+  clean Anthropic session, launch normal Claude Code or `deepclaude --backend anthropic`.
 
 ## Install
 

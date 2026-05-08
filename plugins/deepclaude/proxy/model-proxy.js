@@ -166,6 +166,31 @@ function stripUnsignedThinkingBlocks(body) {
     }
 }
 
+function sessionFromHeaders(headers) {
+    const explicit = headers['x-deepclaude-session'];
+    if (explicit) return sanitizeSessionId(String(explicit));
+
+    const auth = headers.authorization || headers.Authorization;
+    const bearer = typeof auth === 'string' ? auth.match(/^Bearer\s+(.+)$/i)?.[1] : null;
+    if (bearer?.startsWith('dcx_')) return sanitizeSessionId(bearer);
+
+    const apiKey = headers['x-api-key'];
+    if (typeof apiKey === 'string' && apiKey.startsWith('dcx_')) return sanitizeSessionId(apiKey);
+
+    return null;
+}
+
+function sanitizeSessionId(value) {
+    return /^[A-Za-z0-9._:-]{1,128}$/.test(value) ? value : null;
+}
+
+function parseControlBody(body) {
+    const params = new URLSearchParams(body);
+    const backend = params.get('backend') || body.match(/backend=([a-z]+)/)?.[1];
+    const session = sanitizeSessionId(params.get('session') || '');
+    return { backend, session };
+}
+
 export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends, defaultMode }) {
     return new Promise((resolve, reject) => {
         const initialTarget = new URL(targetUrl);
@@ -185,41 +210,76 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
         const startBackend = initialName && initialName !== 'anthropic' && allBackends[initialName];
 
         const state = {
-            mode: initialName || '_single',
-            target: startBackend ? startBackend.target : initialTarget,
-            apiKey: startBackend ? startBackend.apiKey : apiKey,
-            useBearer: startBackend ? startBackend.useBearer : initialBearer,
-            hadNonAnthropicSession: !!startBackend,
+            defaultMode: initialName || '_single',
+            sessions: new Map(),
         };
 
         let reqCount = 0;
         const t0Global = Date.now();
         const costs = {};
 
-        function recordUsage(backend, inputTokens, outputTokens) {
-            if (!costs[backend]) costs[backend] = { input: 0, output: 0, requests: 0 };
-            costs[backend].input += inputTokens || 0;
-            costs[backend].output += outputTokens || 0;
-            costs[backend].requests++;
+        function resolveMode(mode) {
+            if (mode === 'anthropic') {
+                return { mode, target: new URL(ANTHROPIC_FALLBACK), apiKey: null, useBearer: false };
+            }
+            if (mode && mode !== '_single' && allBackends[mode]) {
+                const b = allBackends[mode];
+                return { mode, target: b.target, apiKey: b.apiKey, useBearer: b.useBearer };
+            }
+            return { mode: '_single', target: initialTarget, apiKey, useBearer: initialBearer };
+        }
+
+        function getSessionState(sessionId) {
+            if (!sessionId) return { mode: state.defaultMode, hadNonAnthropicSession: false };
+            if (!state.sessions.has(sessionId)) {
+                state.sessions.set(sessionId, {
+                    mode: state.defaultMode,
+                    hadNonAnthropicSession: state.defaultMode !== 'anthropic' && state.defaultMode !== '_single',
+                });
+            }
+            return state.sessions.get(sessionId);
+        }
+
+        function recordUsage(backend, inputTokens, outputTokens, sessionId) {
+            const key = sessionId || '_shared';
+            if (!costs[key]) costs[key] = { input: 0, output: 0, requests: 0, backends: {} };
+            costs[key].input += inputTokens || 0;
+            costs[key].output += outputTokens || 0;
+            costs[key].requests++;
+            if (!costs[key].backends[backend]) costs[key].backends[backend] = { input: 0, output: 0, requests: 0 };
+            costs[key].backends[backend].input += inputTokens || 0;
+            costs[key].backends[backend].output += outputTokens || 0;
+            costs[key].backends[backend].requests++;
         }
 
         function getCostSummary() {
             const summary = {};
             let totalActual = 0;
             let totalAnthropic = 0;
-            for (const [backend, tokens] of Object.entries(costs)) {
-                const p = PRICING_PER_M[backend] || PRICING_PER_M._single;
+            for (const [sessionId, tokens] of Object.entries(costs)) {
+                const sessionBackends = {};
+                for (const [backend, usage] of Object.entries(tokens.backends || {})) {
+                    const p = PRICING_PER_M[backend] || PRICING_PER_M._single;
+                    const actual = (usage.input * p.input + usage.output * p.output) / 1_000_000;
+                    sessionBackends[backend] = {
+                        input_tokens: usage.input,
+                        output_tokens: usage.output,
+                        requests: usage.requests,
+                        cost: +actual.toFixed(4),
+                    };
+                }
                 const ap = PRICING_PER_M.anthropic;
-                const actual = (tokens.input * p.input + tokens.output * p.output) / 1_000_000;
+                const actual = Object.values(sessionBackends).reduce((sum, b) => sum + b.cost, 0);
                 const anthropicEq = (tokens.input * ap.input + tokens.output * ap.output) / 1_000_000;
                 totalActual += actual;
                 totalAnthropic += anthropicEq;
-                summary[backend] = {
+                summary[sessionId] = {
                     input_tokens: tokens.input,
                     output_tokens: tokens.output,
                     requests: tokens.requests,
                     cost: +actual.toFixed(4),
                     anthropic_equivalent: +anthropicEq.toFixed(4),
+                    backends: sessionBackends,
                 };
             }
             return {
@@ -230,25 +290,25 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
             };
         }
 
-        function switchMode(name) {
+        function switchMode(name, sessionId) {
+            const targetState = sessionId ? getSessionState(sessionId) : state;
             if (name === 'anthropic') {
-                const prev = state.mode;
-                state.mode = 'anthropic';
-                state.target = new URL(ANTHROPIC_FALLBACK);
-                state.apiKey = null;
-                state.useBearer = false;
-                return { mode: 'anthropic', previous: prev };
+                const prev = sessionId ? targetState.mode : state.defaultMode;
+                if (sessionId) targetState.mode = 'anthropic';
+                else state.defaultMode = 'anthropic';
+                return { mode: 'anthropic', previous: prev, session: sessionId || null };
             }
             const b = allBackends[name];
             if (!b) return { error: `Unknown backend: ${name}. Valid: anthropic, ${Object.keys(allBackends).join(', ')}` };
             if (!b.apiKey) return { error: `API key not set for ${name}` };
-            const prev = state.mode;
-            state.mode = name;
-            state.target = b.target;
-            state.apiKey = b.apiKey;
-            state.useBearer = b.useBearer;
-            state.hadNonAnthropicSession = true;
-            return { mode: name, previous: prev };
+            const prev = sessionId ? targetState.mode : state.defaultMode;
+            if (sessionId) {
+                targetState.mode = name;
+                targetState.hadNonAnthropicSession = true;
+            } else {
+                state.defaultMode = name;
+            }
+            return { mode: name, previous: prev, session: sessionId || null };
         }
 
         const server = createServer((clientReq, clientRes) => {
@@ -257,9 +317,15 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
             // Control endpoints — /_proxy/* (never collides with /v1/*)
             if (urlPath.startsWith('/_proxy/')) {
                 if (urlPath === '/_proxy/status') {
+                    const url = new URL(clientReq.url, 'http://127.0.0.1');
+                    const sessionId = sanitizeSessionId(url.searchParams.get('session') || '') || sessionFromHeaders(clientReq.headers);
+                    const sessionState = sessionId ? getSessionState(sessionId) : null;
                     clientRes.writeHead(200, { 'content-type': 'application/json' });
                     clientRes.end(JSON.stringify({
-                        mode: state.mode,
+                        mode: sessionState?.mode || state.defaultMode,
+                        default_mode: state.defaultMode,
+                        session: sessionId,
+                        sessions: state.sessions.size,
                         uptime: Math.round((Date.now() - t0Global) / 1000),
                         requests: reqCount,
                     }));
@@ -286,19 +352,20 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                     });
                     clientReq.on('end', () => {
                         const body = Buffer.concat(chunks).toString();
-                        const m = body.match(/backend=([a-z]+)/);
-                        if (!m) {
+                        const { backend, session } = parseControlBody(body);
+                        const sessionId = session || sessionFromHeaders(clientReq.headers);
+                        if (!backend) {
                             clientRes.writeHead(400, { 'content-type': 'application/json' });
                             clientRes.end(JSON.stringify({ error: 'Missing backend= in body' }));
                             return;
                         }
-                        const result = switchMode(m[1]);
+                        const result = switchMode(backend, sessionId);
                         if (result.error) {
                             clientRes.writeHead(400, { 'content-type': 'application/json' });
                             clientRes.end(JSON.stringify(result));
                             return;
                         }
-                        console.log(`[MODEL-PROXY] Mode switched: ${result.previous} → ${result.mode}`);
+                        console.log(`[MODEL-PROXY] Mode switched${sessionId ? ` (${sessionId})` : ' default'}: ${result.previous} → ${result.mode}`);
                         clientRes.writeHead(200, { 'content-type': 'application/json' });
                         clientRes.end(JSON.stringify(result));
                     });
@@ -314,17 +381,19 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                 return;
             }
 
-            // In anthropic mode, everything passes through transparently
-            const isAnthropicMode = state.mode === 'anthropic';
+            const sessionId = sessionFromHeaders(clientReq.headers);
+            const sessionState = getSessionState(sessionId);
+            const route = resolveMode(sessionState.mode);
+            const isAnthropicMode = route.mode === 'anthropic';
             const isModelCall = !isAnthropicMode && MODEL_PATHS.includes(urlPath);
-            const dest = isModelCall ? state.target : new URL(ANTHROPIC_FALLBACK);
+            const dest = isModelCall ? route.target : new URL(ANTHROPIC_FALLBACK);
 
             // Build upstream path. target.pathname may overlap with
             // clientReq.url (e.g. OpenRouter /api/v1 + /v1/messages).
             // Strip the shared prefix to avoid /api/v1/v1/messages.
             let fullPath;
             if (isModelCall) {
-                const base = state.target.pathname.replace(/\/$/, '');
+                const base = route.target.pathname.replace(/\/$/, '');
                 let overlap = '';
                 for (let i = 1; i <= Math.min(base.length, urlPath.length); i++) {
                     if (base.endsWith(urlPath.substring(0, i))) overlap = urlPath.substring(0, i);
@@ -338,7 +407,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
             const t0 = Date.now();
 
             if (isModelCall) {
-                console.log(`[MODEL-PROXY] #${reqId} → ${dest.hostname}${fullPath}`);
+                console.log(`[MODEL-PROXY] #${reqId} ${sessionId || '_shared'}:${route.mode} → ${dest.hostname}${fullPath}`);
             }
 
             const headers = { ...clientReq.headers, host: dest.host };
@@ -347,15 +416,15 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
             if (isModelCall) {
                 delete headers['authorization'];
                 delete headers['x-api-key'];
-                if (state.mode !== 'deepseek') {
+                if (route.mode !== 'deepseek') {
                     delete headers['anthropic-beta'];
                     delete headers['x-claude-code-effort-level'];
                 }
                 delete headers['x-stainless-retry-count'];
-                if (state.useBearer) {
-                    headers['authorization'] = `Bearer ${state.apiKey}`;
+                if (route.useBearer) {
+                    headers['authorization'] = `Bearer ${route.apiKey}`;
                 } else {
-                    headers['x-api-key'] = state.apiKey;
+                    headers['x-api-key'] = route.apiKey;
                 }
             }
 
@@ -365,10 +434,10 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                 let body = Buffer.concat(chunks);
 
                 // Remap Anthropic model names to backend-specific names
-                if (isModelCall && MODEL_REMAP[state.mode]) {
+                if (isModelCall && MODEL_REMAP[route.mode]) {
                     try {
                         const parsed = JSON.parse(body);
-                        const mapped = MODEL_REMAP[state.mode][parsed.model];
+                        const mapped = MODEL_REMAP[route.mode][parsed.model];
                         if (mapped) {
                             console.log(`[MODEL-PROXY] #${reqId} model remap: ${parsed.model} → ${mapped}`);
                             parsed.model = mapped;
@@ -386,7 +455,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                 if (isAnthropicMode && MODEL_PATHS.includes(urlPath)) {
                     try {
                         const parsed = JSON.parse(body);
-                        if (state.hadNonAnthropicSession) {
+                        if (sessionState.hadNonAnthropicSession) {
                             stripAllThinkingBlocks(parsed);
                         } else {
                             stripUnsignedThinkingBlocks(parsed);
@@ -397,7 +466,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                 if (isModelCall) {
                     try {
                         const parsed = JSON.parse(body);
-                        if (state.mode !== 'deepseek') {
+                        if (route.mode !== 'deepseek') {
                             delete parsed.reasoning;
                             delete parsed.reasoning_effort;
                             delete parsed.thinking_budget;
@@ -428,8 +497,8 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                     if (isModelCall && isSSE) {
                         clientRes.writeHead(proxyRes.statusCode, proxyRes.headers);
                         const norm = new UsageNormalizer(
-                            (inp, out) => recordUsage(state.mode, inp, out),
-                            { preserveThinking: state.mode === 'deepseek' }
+                            (inp, out) => recordUsage(route.mode, inp, out, sessionId),
+                            { preserveThinking: route.mode === 'deepseek' }
                         );
                         proxyRes.pipe(norm).pipe(clientRes);
                         proxyRes.on('end', () => {
@@ -440,10 +509,10 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                         proxyRes.on('data', c => respChunks.push(c));
                         proxyRes.on('end', () => {
                             const raw = Buffer.concat(respChunks);
-                            const fixed = normalizeJsonBody(raw, { preserveThinking: state.mode === 'deepseek' });
+                            const fixed = normalizeJsonBody(raw, { preserveThinking: route.mode === 'deepseek' });
                             try {
                                 const j = JSON.parse(fixed);
-                                if (j.usage) recordUsage(state.mode, j.usage.input_tokens, j.usage.output_tokens);
+                                if (j.usage) recordUsage(route.mode, j.usage.input_tokens, j.usage.output_tokens, sessionId);
                             } catch {}
                             const outHeaders = { ...proxyRes.headers, 'content-length': fixed.length };
                             clientRes.writeHead(proxyRes.statusCode, outHeaders);
@@ -490,7 +559,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
             });
             server.listen(port, '127.0.0.1', () => {
                 const actualPort = server.address().port;
-                console.log(`[MODEL-PROXY] Listening on 127.0.0.1:${actualPort} → ${targetUrl} (mode: ${state.mode})`);
+                console.log(`[MODEL-PROXY] Listening on 127.0.0.1:${actualPort} → ${targetUrl} (default mode: ${state.defaultMode})`);
                 resolve({ port: actualPort, close: () => server.close(), switchMode });
             });
         }

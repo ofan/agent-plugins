@@ -1,16 +1,18 @@
-# Model Proxy for Remote Control
+# Model Proxy
 
-When using `claude remote-control`, the bridge authentication must go to Anthropic while model API calls go to DeepSeek. This proxy handles the split.
+Shared local model proxy for `deepclaude`.
 
 ## How it works
 
 ```
-claude remote-control
-  ├── Bridge WebSocket → wss://bridge.claudeusercontent.com (Anthropic, hardcoded)
-  └── Model API calls  → http://localhost:3200 (this proxy)
-                            ├── /v1/messages → api.deepseek.com (with DeepSeek key)
-                            └── everything else → api.anthropic.com (passthrough)
+Claude Code instance A ─┐
+                        ├─ http://127.0.0.1:3200 ─ session A → DeepSeek
+Claude Code instance B ─┘                         └ session B → OpenRouter
 ```
+
+Each launcher creates a `DEEPCLAUDE_SESSION_ID` and sets it as the local
+`ANTHROPIC_AUTH_TOKEN`. The proxy uses that token only for local routing, then
+replaces it with the selected provider key before forwarding `/v1/messages`.
 
 ## Usage
 
@@ -27,16 +29,19 @@ console.log(`Proxy on port ${proxy.port}`);
 // Set env vars for claude remote-control:
 // ANTHROPIC_BASE_URL=http://127.0.0.1:${proxy.port}
 // ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-v4-pro
-// (do NOT set ANTHROPIC_AUTH_TOKEN — OAuth handles bridge auth)
+// ANTHROPIC_AUTH_TOKEN=dcx_<session-id>
 
 // When done:
 proxy.close();
 ```
 
-## Why a proxy?
+## Control API
 
-Claude Code's remote control uses two separate channels:
-1. **Bridge** (WebSocket to `wss://bridge.claudeusercontent.com`) — hardcoded, needs Anthropic OAuth
-2. **Model API** (HTTP to `ANTHROPIC_BASE_URL`) — configurable
+```sh
+curl -sS http://127.0.0.1:3200/_proxy/status
+curl -sS "http://127.0.0.1:3200/_proxy/status?session=$DEEPCLAUDE_SESSION_ID"
+curl -sS -X POST http://127.0.0.1:3200/_proxy/mode \
+  -d "backend=deepseek&session=$DEEPCLAUDE_SESSION_ID"
+```
 
-Setting `ANTHROPIC_AUTH_TOKEN` to a DeepSeek key breaks the bridge. The proxy lets you keep Anthropic OAuth for the bridge while routing model calls to DeepSeek.
+Without a `session`, `/mode` changes the default backend for new sessions.

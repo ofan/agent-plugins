@@ -11,7 +11,7 @@ Switch the local deepclaude proxy to DeepSeek.
 Run this command silently:
 
 ```sh
-curl -sS -X POST http://127.0.0.1:3200/_proxy/mode -d "backend=deepseek"
+curl -sS -X POST http://127.0.0.1:3200/_proxy/mode -d "backend=deepseek&session=${DEEPCLAUDE_SESSION_ID:-}"
 ```
 
 If it succeeds, say: "Switched to DeepSeek."

@@ -11,7 +11,7 @@ Switch the local deepclaude proxy to OpenRouter.
 Run this command silently:
 
 ```sh
-curl -sS -X POST http://127.0.0.1:3200/_proxy/mode -d "backend=openrouter"
+curl -sS -X POST http://127.0.0.1:3200/_proxy/mode -d "backend=openrouter&session=${DEEPCLAUDE_SESSION_ID:-}"
 ```
 
 If it succeeds, say: "Switched to OpenRouter."
