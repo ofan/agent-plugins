@@ -6,7 +6,8 @@ import { Transform } from 'stream';
 const ANTHROPIC_FALLBACK = 'https://api.anthropic.com';
 const MODEL_PATHS = ['/v1/messages'];
 const REQUEST_TIMEOUT_MS = 5 * 60 * 1000; // 5 min per request
-const DEFAULT_IDLE_TTL_MS = 30 * 60 * 1000; // 30 min idle shared proxy TTL
+const DEFAULT_IDLE_TTL_MS = 30 * 60 * 1000; // 30 min after no live sessions
+const DEFAULT_SESSION_TTL_MS = 12 * 60 * 60 * 1000; // stale fallback when no pid is known
 
 const MODEL_REMAP = {
     deepseek: {
@@ -189,10 +190,13 @@ function parseControlBody(body) {
     const params = new URLSearchParams(body);
     const backend = params.get('backend') || body.match(/backend=([a-z]+)/)?.[1];
     const session = sanitizeSessionId(params.get('session') || '');
-    return { backend, session };
+    const action = params.get('action') || '';
+    const pidRaw = params.get('pid') || '';
+    const pid = /^[1-9][0-9]*$/.test(pidRaw) ? Number(pidRaw) : null;
+    return { action, backend, pid, session };
 }
 
-export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends, defaultMode, idleTtlMs = DEFAULT_IDLE_TTL_MS }) {
+export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends, defaultMode, idleTtlMs = DEFAULT_IDLE_TTL_MS, sessionTtlMs = DEFAULT_SESSION_TTL_MS }) {
     return new Promise((resolve, reject) => {
         const initialTarget = new URL(targetUrl);
         const initialBearer = targetUrl.includes('openrouter') || targetUrl.includes('fireworks');
@@ -231,11 +235,17 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
         }
 
         function armIdleTimer() {
-            if (!idleTtlMs || idleTtlMs < 0 || activeModelRequests > 0 || idleTimer) return;
+            pruneDeadSessions();
+            if (!idleTtlMs || idleTtlMs < 0 || activeModelRequests > 0 || liveSessionCount() > 0 || idleTimer) return;
             const delay = Math.max(0, idleTtlMs - (Date.now() - lastActivity));
             idleTimer = setTimeout(() => {
                 idleTimer = null;
+                pruneDeadSessions();
                 if (activeModelRequests > 0) return;
+                if (liveSessionCount() > 0) {
+                    armIdleTimer();
+                    return;
+                }
                 const idleFor = Date.now() - lastActivity;
                 if (idleFor < idleTtlMs) {
                     armIdleTimer();
@@ -276,9 +286,57 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                 state.sessions.set(sessionId, {
                     mode: state.defaultMode,
                     hadNonAnthropicSession: state.defaultMode !== 'anthropic' && state.defaultMode !== '_single',
+                    lastSeen: Date.now(),
+                    pid: null,
                 });
             }
             return state.sessions.get(sessionId);
+        }
+
+        function pidIsAlive(pid) {
+            if (!pid) return false;
+            try {
+                process.kill(pid, 0);
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        function sessionIsLive(session) {
+            if (session.pid) return pidIsAlive(session.pid);
+            return sessionTtlMs > 0 && Date.now() - (session.lastSeen || 0) < sessionTtlMs;
+        }
+
+        function pruneDeadSessions() {
+            for (const [sessionId, session] of state.sessions.entries()) {
+                if (!sessionIsLive(session)) state.sessions.delete(sessionId);
+            }
+        }
+
+        function liveSessionCount() {
+            let count = 0;
+            for (const session of state.sessions.values()) {
+                if (sessionIsLive(session)) count++;
+            }
+            return count;
+        }
+
+        function updateSessionHeartbeat(sessionId, pid) {
+            if (!sessionId) return { error: 'Missing session' };
+            const session = getSessionState(sessionId);
+            session.lastSeen = Date.now();
+            if (pid) session.pid = pid;
+            touchActivity();
+            return { session: sessionId, live_sessions: liveSessionCount() };
+        }
+
+        function stopSession(sessionId) {
+            if (!sessionId) return { error: 'Missing session' };
+            state.sessions.delete(sessionId);
+            touchActivity();
+            armIdleTimer();
+            return { session: sessionId, live_sessions: liveSessionCount() };
         }
 
         function recordUsage(backend, inputTokens, outputTokens, sessionId) {
@@ -358,21 +416,51 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
             // Control endpoints — /_proxy/* (never collides with /v1/*)
             if (urlPath.startsWith('/_proxy/')) {
                 if (urlPath === '/_proxy/status') {
+                    pruneDeadSessions();
                     const url = new URL(clientReq.url, 'http://127.0.0.1');
                     const sessionId = sanitizeSessionId(url.searchParams.get('session') || '') || sessionFromHeaders(clientReq.headers);
-                    const sessionState = sessionId ? getSessionState(sessionId) : null;
+                    const sessionState = sessionId ? state.sessions.get(sessionId) : null;
                     clientRes.writeHead(200, { 'content-type': 'application/json' });
                     clientRes.end(JSON.stringify({
                         mode: sessionState?.mode || state.defaultMode,
                         default_mode: state.defaultMode,
                         session: sessionId,
                         sessions: state.sessions.size,
+                        live_sessions: liveSessionCount(),
                         active_requests: activeModelRequests,
                         idle_ttl_seconds: idleTtlMs ? Math.round(idleTtlMs / 1000) : null,
+                        session_ttl_seconds: sessionTtlMs ? Math.round(sessionTtlMs / 1000) : null,
                         idle_for_seconds: Math.round((Date.now() - lastActivity) / 1000),
                         uptime: Math.round((Date.now() - t0Global) / 1000),
                         requests: reqCount,
                     }));
+                    return;
+                }
+                if (urlPath === '/_proxy/session' && clientReq.method === 'POST') {
+                    const chunks = [];
+                    let bodySize = 0;
+                    clientReq.on('data', c => {
+                        bodySize += c.length;
+                        if (bodySize > 1024) { clientReq.destroy(); return; }
+                        chunks.push(c);
+                    });
+                    clientReq.on('end', () => {
+                        const { action, pid, session } = parseControlBody(Buffer.concat(chunks).toString());
+                        const sessionId = session || sessionFromHeaders(clientReq.headers);
+                        const result = action === 'stop' ? stopSession(sessionId) : updateSessionHeartbeat(sessionId, pid);
+                        if (result.error) {
+                            clientRes.writeHead(400, { 'content-type': 'application/json' });
+                            clientRes.end(JSON.stringify(result));
+                            return;
+                        }
+                        clientRes.writeHead(200, { 'content-type': 'application/json' });
+                        clientRes.end(JSON.stringify(result));
+                    });
+                    return;
+                }
+                if (urlPath === '/_proxy/session' && clientReq.method !== 'POST') {
+                    clientRes.writeHead(405, { 'content-type': 'application/json' });
+                    clientRes.end(JSON.stringify({ error: 'Use POST' }));
                     return;
                 }
                 if (urlPath === '/_proxy/cost') {

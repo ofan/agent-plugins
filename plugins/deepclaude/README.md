@@ -6,8 +6,8 @@ Fireworks, and Anthropic, with slash commands for live backend switching.
 This plugin packages and extends the original
 [aattaran/deepclaude](https://github.com/aattaran/deepclaude) project for the
 Claude plugin marketplace. The local changes add plugin installation, slash
-commands, shared proxy sessions, per-session backend switching, and idle proxy
-shutdown.
+commands, shared proxy sessions, per-session backend switching, and single-proxy
+lifecycle handling.
 
 ## Commands
 
@@ -62,9 +62,15 @@ By default, a launcher that starts the proxy leaves it running for other session
 Set `DEEPCLAUDE_STOP_PROXY_ON_EXIT=1` if you want the starter session to stop its
 own proxy on exit.
 
-The shared proxy exits after 30 minutes without active model requests. Override
-that with `DEEPCLAUDE_PROXY_IDLE_TTL`, using `30s`, `10m`, `2h`, or `0`/`off`
-to disable idle shutdown.
+Only one proxy is used per `DEEPCLAUDE_PROXY_PORT`. Launchers reuse the existing
+proxy and register their session with a heartbeat. A quiet Claude Code session
+can sit for a long time without model requests; the proxy will stay alive while
+that launcher is still running.
+
+After the last live launcher session exits, the shared proxy exits after 30
+minutes. Override that with `DEEPCLAUDE_PROXY_IDLE_TTL`, using `30s`, `10m`,
+`2h`, or `0`/`off` to disable proxy shutdown. Heartbeats run every 30 seconds by
+default; override with `DEEPCLAUDE_PROXY_HEARTBEAT_INTERVAL`.
 
 ### Limits
 

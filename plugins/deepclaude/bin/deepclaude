@@ -7,8 +7,10 @@ REAL_DEEPCLAUDE="$HOME/.local/share/deepclaude/deepclaude.sh"
 PROXY_SCRIPT="$HOME/.local/share/deepclaude/proxy/start-proxy.js"
 PROXY_PORT="${DEEPCLAUDE_PROXY_PORT:-3200}"
 PROXY_PID=""
+HEARTBEAT_PID=""
 PROXY_LOG="${TMPDIR:-/tmp}/deepclaude-proxy.$$"
 SESSION_ID="${DEEPCLAUDE_SESSION_ID:-}"
+HEARTBEAT_INTERVAL="${DEEPCLAUDE_PROXY_HEARTBEAT_INTERVAL:-30}"
 
 if [ ! -x "$REAL_DEEPCLAUDE" ]; then
   echo "deepclaude: missing $REAL_DEEPCLAUDE" >&2
@@ -31,11 +33,32 @@ export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 export CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1
 
 cleanup_proxy() {
+  if [ -n "$HEARTBEAT_PID" ] && kill -0 "$HEARTBEAT_PID" 2>/dev/null; then
+    kill "$HEARTBEAT_PID" 2>/dev/null || true
+    wait "$HEARTBEAT_PID" 2>/dev/null || true
+  fi
+  if [ -n "$SESSION_ID" ]; then
+    curl -fsS -X POST "http://127.0.0.1:$PROXY_PORT/_proxy/session" \
+      -d "action=stop&session=$SESSION_ID" >/dev/null 2>&1 || true
+  fi
   if [ "${DEEPCLAUDE_STOP_PROXY_ON_EXIT:-0}" = "1" ] && [ -n "$PROXY_PID" ] && kill -0 "$PROXY_PID" 2>/dev/null; then
     kill "$PROXY_PID" 2>/dev/null || true
     wait "$PROXY_PID" 2>/dev/null || true
   fi
   rm -f "$PROXY_LOG"
+}
+
+start_heartbeat() {
+  curl -fsS -X POST "http://127.0.0.1:$PROXY_PORT/_proxy/session" \
+    -d "action=heartbeat&session=$SESSION_ID&pid=$$" >/dev/null 2>&1 || true
+  (
+    while :; do
+      sleep "$HEARTBEAT_INTERVAL" || exit 0
+      curl -fsS -X POST "http://127.0.0.1:$PROXY_PORT/_proxy/session" \
+        -d "action=heartbeat&session=$SESSION_ID&pid=$$" >/dev/null 2>&1 || exit 0
+    done
+  ) &
+  HEARTBEAT_PID=$!
 }
 
 trap cleanup_proxy EXIT INT TERM
@@ -148,9 +171,9 @@ esac
 proxy_status="$(curl -fsS "http://127.0.0.1:$PROXY_PORT/_proxy/status" 2>/dev/null || true)"
 if [ -n "$proxy_status" ]; then
   case "$proxy_status" in
-    *'"sessions"'*) ;;
+    *'"live_sessions"'*) ;;
     *)
-      echo "deepclaude: existing proxy on 127.0.0.1:$PROXY_PORT is too old for shared sessions" >&2
+      echo "deepclaude: existing proxy on 127.0.0.1:$PROXY_PORT is too old for live shared sessions" >&2
       echo "deepclaude: stop it, reinstall this plugin, then start deepclaude again" >&2
       exit 1
       ;;
@@ -188,6 +211,7 @@ curl -fsS -X POST "http://127.0.0.1:$PROXY_PORT/_proxy/mode" -d "backend=$mode&s
   echo "deepclaude: failed to switch proxy to $mode" >&2
   exit 1
 }
+start_heartbeat
 
 export ANTHROPIC_BASE_URL="http://127.0.0.1:$PROXY_PORT"
 export DEEPCLAUDE_SESSION_ID="$SESSION_ID"

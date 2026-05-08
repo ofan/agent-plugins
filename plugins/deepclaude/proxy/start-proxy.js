@@ -12,6 +12,7 @@ const targetUrl = process.argv[2] || process.env.CHEAPCLAUDE_TARGET_URL;
 const apiKey = process.argv[3] || process.env.CHEAPCLAUDE_API_KEY;
 const envPort = parseInt(process.env.DEEPCLAUDE_PROXY_PORT || process.env.CHEAPCLAUDE_PROXY_PORT || '3200', 10);
 const idleTtlMs = parseIdleTtl(process.env.DEEPCLAUDE_PROXY_IDLE_TTL || process.env.CHEAPCLAUDE_PROXY_IDLE_TTL || '30m');
+const sessionTtlMs = parseIdleTtl(process.env.DEEPCLAUDE_PROXY_SESSION_TTL || '12h');
 
 function parseIdleTtl(value) {
     const raw = String(value || '').trim().toLowerCase();
@@ -43,6 +44,7 @@ if (targetUrl && apiKey) {
         backends: hasBackends ? backends : undefined,
         defaultMode: hasBackends ? undefined : undefined,
         idleTtlMs,
+        sessionTtlMs,
     });
     console.log(port);
 } else {
@@ -69,6 +71,7 @@ if (targetUrl && apiKey) {
         backends,
         defaultMode,
         idleTtlMs,
+        sessionTtlMs,
     });
 
     console.log(`Proxy on :${proxy.port} (mode: ${defaultMode})`);
