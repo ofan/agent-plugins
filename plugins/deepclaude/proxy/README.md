@@ -45,3 +45,12 @@ curl -sS -X POST http://127.0.0.1:3200/_proxy/mode \
 ```
 
 Without a `session`, `/mode` changes the default backend for new sessions.
+
+## Idle shutdown
+
+The proxy exits after 30 minutes without active model requests. Configure with:
+
+```sh
+DEEPCLAUDE_PROXY_IDLE_TTL=10m
+DEEPCLAUDE_PROXY_IDLE_TTL=0    # disable
+```

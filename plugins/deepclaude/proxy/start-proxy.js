@@ -11,6 +11,21 @@ const BACKEND_DEFS = {
 const targetUrl = process.argv[2] || process.env.CHEAPCLAUDE_TARGET_URL;
 const apiKey = process.argv[3] || process.env.CHEAPCLAUDE_API_KEY;
 const envPort = parseInt(process.env.DEEPCLAUDE_PROXY_PORT || process.env.CHEAPCLAUDE_PROXY_PORT || '3200', 10);
+const idleTtlMs = parseIdleTtl(process.env.DEEPCLAUDE_PROXY_IDLE_TTL || process.env.CHEAPCLAUDE_PROXY_IDLE_TTL || '30m');
+
+function parseIdleTtl(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw || raw === 'off' || raw === 'never' || raw === '0') return 0;
+    const m = raw.match(/^(\d+)(ms|s|m|h)?$/);
+    if (!m) return 30 * 60 * 1000;
+    const n = Number(m[1]);
+    const unit = m[2] || 's';
+    if (unit === 'ms') return n;
+    if (unit === 's') return n * 1000;
+    if (unit === 'm') return n * 60 * 1000;
+    if (unit === 'h') return n * 60 * 60 * 1000;
+    return n * 1000;
+}
 
 if (targetUrl && apiKey) {
     // Legacy single-backend mode
@@ -27,6 +42,7 @@ if (targetUrl && apiKey) {
         startPort: envPort,
         backends: hasBackends ? backends : undefined,
         defaultMode: hasBackends ? undefined : undefined,
+        idleTtlMs,
     });
     console.log(port);
 } else {
@@ -52,6 +68,7 @@ if (targetUrl && apiKey) {
         startPort: port,
         backends,
         defaultMode,
+        idleTtlMs,
     });
 
     console.log(`Proxy on :${proxy.port} (mode: ${defaultMode})`);

@@ -56,6 +56,10 @@ By default, a launcher that starts the proxy leaves it running for other session
 Set `DEEPCLAUDE_STOP_PROXY_ON_EXIT=1` if you want the starter session to stop its
 own proxy on exit.
 
+The shared proxy exits after 30 minutes without active model requests. Override
+that with `DEEPCLAUDE_PROXY_IDLE_TTL`, using `30s`, `10m`, `2h`, or `0`/`off`
+to disable idle shutdown.
+
 ### Limits
 
 - Resuming a transcript that was already corrupted by missing thinking blocks can

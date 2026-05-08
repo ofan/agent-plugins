@@ -6,6 +6,7 @@ import { Transform } from 'stream';
 const ANTHROPIC_FALLBACK = 'https://api.anthropic.com';
 const MODEL_PATHS = ['/v1/messages'];
 const REQUEST_TIMEOUT_MS = 5 * 60 * 1000; // 5 min per request
+const DEFAULT_IDLE_TTL_MS = 30 * 60 * 1000; // 30 min idle shared proxy TTL
 
 const MODEL_REMAP = {
     deepseek: {
@@ -191,7 +192,7 @@ function parseControlBody(body) {
     return { backend, session };
 }
 
-export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends, defaultMode }) {
+export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends, defaultMode, idleTtlMs = DEFAULT_IDLE_TTL_MS }) {
     return new Promise((resolve, reject) => {
         const initialTarget = new URL(targetUrl);
         const initialBearer = targetUrl.includes('openrouter') || targetUrl.includes('fireworks');
@@ -215,8 +216,48 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
         };
 
         let reqCount = 0;
+        let activeModelRequests = 0;
+        let idleTimer = null;
+        let lastActivity = Date.now();
         const t0Global = Date.now();
         const costs = {};
+
+        function touchActivity() {
+            lastActivity = Date.now();
+            if (idleTimer) {
+                clearTimeout(idleTimer);
+                idleTimer = null;
+            }
+        }
+
+        function armIdleTimer() {
+            if (!idleTtlMs || idleTtlMs < 0 || activeModelRequests > 0 || idleTimer) return;
+            const delay = Math.max(0, idleTtlMs - (Date.now() - lastActivity));
+            idleTimer = setTimeout(() => {
+                idleTimer = null;
+                if (activeModelRequests > 0) return;
+                const idleFor = Date.now() - lastActivity;
+                if (idleFor < idleTtlMs) {
+                    armIdleTimer();
+                    return;
+                }
+                console.log(`[MODEL-PROXY] Idle for ${Math.round(idleFor / 1000)}s; shutting down`);
+                server.close(() => process.exit(0));
+                setTimeout(() => process.exit(0), 1000).unref();
+            }, delay);
+            idleTimer.unref?.();
+        }
+
+        function beginModelRequest() {
+            touchActivity();
+            activeModelRequests++;
+        }
+
+        function endModelRequest() {
+            activeModelRequests = Math.max(0, activeModelRequests - 1);
+            touchActivity();
+            armIdleTimer();
+        }
 
         function resolveMode(mode) {
             if (mode === 'anthropic') {
@@ -326,6 +367,9 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                         default_mode: state.defaultMode,
                         session: sessionId,
                         sessions: state.sessions.size,
+                        active_requests: activeModelRequests,
+                        idle_ttl_seconds: idleTtlMs ? Math.round(idleTtlMs / 1000) : null,
+                        idle_for_seconds: Math.round((Date.now() - lastActivity) / 1000),
                         uptime: Math.round((Date.now() - t0Global) / 1000),
                         requests: reqCount,
                     }));
@@ -405,9 +449,21 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
 
             const reqId = ++reqCount;
             const t0 = Date.now();
+            let finishModelRequest = () => {};
 
             if (isModelCall) {
                 console.log(`[MODEL-PROXY] #${reqId} ${sessionId || '_shared'}:${route.mode} → ${dest.hostname}${fullPath}`);
+                beginModelRequest();
+                let modelRequestDone = false;
+                finishModelRequest = () => {
+                    if (modelRequestDone) return;
+                    modelRequestDone = true;
+                    endModelRequest();
+                };
+                clientReq.on('aborted', finishModelRequest);
+                clientRes.on('close', () => {
+                    if (!clientRes.writableEnded) finishModelRequest();
+                });
             }
 
             const headers = { ...clientReq.headers, host: dest.host };
@@ -503,6 +559,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                         proxyRes.pipe(norm).pipe(clientRes);
                         proxyRes.on('end', () => {
                             console.log(`[MODEL-PROXY] #${reqId} done in ${((Date.now() - t0) / 1000).toFixed(1)}s (${norm._inputTokens}in/${norm._outputTokens}out)`);
+                            finishModelRequest();
                         });
                     } else if (isModelCall && ct.includes('application/json')) {
                         const respChunks = [];
@@ -518,6 +575,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                             clientRes.writeHead(proxyRes.statusCode, outHeaders);
                             clientRes.end(fixed);
                             console.log(`[MODEL-PROXY] #${reqId} done in ${((Date.now() - t0) / 1000).toFixed(1)}s (json, ${fixed.length}b)`);
+                            finishModelRequest();
                         });
                     } else {
                         // Non-model or unknown content-type: pass through
@@ -526,6 +584,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                         if (isModelCall) {
                             proxyRes.on('end', () => {
                                 console.log(`[MODEL-PROXY] #${reqId} done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+                                finishModelRequest();
                             });
                         }
                     }
@@ -543,6 +602,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                         clientRes.writeHead(502, { 'content-type': 'application/json' });
                     }
                     clientRes.end(JSON.stringify({ error: { message: 'Upstream connection error' } }));
+                    finishModelRequest();
                 });
 
                 proxyReq.end(body);
@@ -560,6 +620,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
             server.listen(port, '127.0.0.1', () => {
                 const actualPort = server.address().port;
                 console.log(`[MODEL-PROXY] Listening on 127.0.0.1:${actualPort} → ${targetUrl} (default mode: ${state.defaultMode})`);
+                armIdleTimer();
                 resolve({ port: actualPort, close: () => server.close(), switchMode });
             });
         }
