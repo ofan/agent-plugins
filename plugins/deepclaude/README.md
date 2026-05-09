@@ -34,7 +34,12 @@ points `ANTHROPIC_BASE_URL` at the proxy. The proxy defaults to
 
 ```sh
 deepclaude
+deepclaude -r
+deepclaude --remote
 ```
+
+Short `-r` is passed to Claude Code as resume. Use long `--remote` for the
+upstream DeepClaude remote-control mode.
 
 The launcher should provide provider keys through environment variables or a secret manager:
 

@@ -68,7 +68,7 @@ passthrough=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --status|--cost|--benchmark|--help|-h|--switch|-s|--remote|-r)
+    --status|--cost|--benchmark|--help|-h|--switch|-s|--remote)
       passthrough=1
       break
       ;;

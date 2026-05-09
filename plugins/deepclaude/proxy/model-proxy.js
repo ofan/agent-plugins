@@ -251,7 +251,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                     armIdleTimer();
                     return;
                 }
-                console.log(`[MODEL-PROXY] Idle for ${Math.round(idleFor / 1000)}s; shutting down`);
+                console.error(`[MODEL-PROXY] Idle for ${Math.round(idleFor / 1000)}s; shutting down`);
                 server.close(() => process.exit(0));
                 setTimeout(() => process.exit(0), 1000).unref();
             }, delay);
@@ -497,7 +497,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                             clientRes.end(JSON.stringify(result));
                             return;
                         }
-                        console.log(`[MODEL-PROXY] Mode switched${sessionId ? ` (${sessionId})` : ' default'}: ${result.previous} → ${result.mode}`);
+                        console.error(`[MODEL-PROXY] Mode switched${sessionId ? ` (${sessionId})` : ' default'}: ${result.previous} → ${result.mode}`);
                         clientRes.writeHead(200, { 'content-type': 'application/json' });
                         clientRes.end(JSON.stringify(result));
                     });
@@ -540,7 +540,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
             let finishModelRequest = () => {};
 
             if (isModelCall) {
-                console.log(`[MODEL-PROXY] #${reqId} ${sessionId || '_shared'}:${route.mode} → ${dest.hostname}${fullPath}`);
+                console.error(`[MODEL-PROXY] #${reqId} ${sessionId || '_shared'}:${route.mode} → ${dest.hostname}${fullPath}`);
                 beginModelRequest();
                 let modelRequestDone = false;
                 finishModelRequest = () => {
@@ -583,7 +583,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                         const parsed = JSON.parse(body);
                         const mapped = MODEL_REMAP[route.mode][parsed.model];
                         if (mapped) {
-                            console.log(`[MODEL-PROXY] #${reqId} model remap: ${parsed.model} → ${mapped}`);
+                            console.error(`[MODEL-PROXY] #${reqId} model remap: ${parsed.model} → ${mapped}`);
                             parsed.model = mapped;
                             body = Buffer.from(JSON.stringify(parsed));
                         }
@@ -632,7 +632,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                 const proxyReq = httpsRequest(opts, (proxyRes) => {
                     if (isModelCall) {
                         const ttfb = Date.now() - t0;
-                        console.log(`[MODEL-PROXY] #${reqId} TTFB ${ttfb}ms (status ${proxyRes.statusCode})`);
+                        console.error(`[MODEL-PROXY] #${reqId} TTFB ${ttfb}ms (status ${proxyRes.statusCode})`);
                     }
 
                     const ct = proxyRes.headers['content-type'] || '';
@@ -646,7 +646,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                         );
                         proxyRes.pipe(norm).pipe(clientRes);
                         proxyRes.on('end', () => {
-                            console.log(`[MODEL-PROXY] #${reqId} done in ${((Date.now() - t0) / 1000).toFixed(1)}s (${norm._inputTokens}in/${norm._outputTokens}out)`);
+                            console.error(`[MODEL-PROXY] #${reqId} done in ${((Date.now() - t0) / 1000).toFixed(1)}s (${norm._inputTokens}in/${norm._outputTokens}out)`);
                             finishModelRequest();
                         });
                     } else if (isModelCall && ct.includes('application/json')) {
@@ -662,7 +662,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                             const outHeaders = { ...proxyRes.headers, 'content-length': fixed.length };
                             clientRes.writeHead(proxyRes.statusCode, outHeaders);
                             clientRes.end(fixed);
-                            console.log(`[MODEL-PROXY] #${reqId} done in ${((Date.now() - t0) / 1000).toFixed(1)}s (json, ${fixed.length}b)`);
+                            console.error(`[MODEL-PROXY] #${reqId} done in ${((Date.now() - t0) / 1000).toFixed(1)}s (json, ${fixed.length}b)`);
                             finishModelRequest();
                         });
                     } else {
@@ -671,7 +671,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                         proxyRes.pipe(clientRes);
                         if (isModelCall) {
                             proxyRes.on('end', () => {
-                                console.log(`[MODEL-PROXY] #${reqId} done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+                                console.error(`[MODEL-PROXY] #${reqId} done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
                                 finishModelRequest();
                             });
                         }
@@ -707,7 +707,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
             });
             server.listen(port, '127.0.0.1', () => {
                 const actualPort = server.address().port;
-                console.log(`[MODEL-PROXY] Listening on 127.0.0.1:${actualPort} → ${targetUrl} (default mode: ${state.defaultMode})`);
+                console.error(`[MODEL-PROXY] Listening on 127.0.0.1:${actualPort} → ${targetUrl} (default mode: ${state.defaultMode})`);
                 armIdleTimer();
                 resolve({ port: actualPort, close: () => server.close(), switchMode });
             });
