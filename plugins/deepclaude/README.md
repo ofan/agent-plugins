@@ -35,11 +35,11 @@ points `ANTHROPIC_BASE_URL` at the proxy. The proxy defaults to
 ```sh
 deepclaude
 deepclaude -r
-deepclaude --remote
+deepclaude --resume
 ```
 
-Short `-r` is passed to Claude Code as resume. Use long `--remote` for the
-upstream DeepClaude remote-control mode.
+`-r` and `--resume` are passed to Claude Code as resume. The packaged launcher
+does not support upstream DeepClaude remote-control mode.
 
 The launcher should provide provider keys through environment variables or a secret manager:
 

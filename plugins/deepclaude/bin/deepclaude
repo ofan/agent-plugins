@@ -68,9 +68,14 @@ passthrough=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --status|--cost|--benchmark|--help|-h|--switch|-s|--remote)
+    --status|--cost|--benchmark|--help|-h|--switch|-s)
       passthrough=1
       break
+      ;;
+    --remote)
+      echo "deepclaude: --remote is not supported by the packaged shared-proxy launcher" >&2
+      echo "deepclaude: use -r or --resume for Claude Code resume" >&2
+      exit 2
       ;;
     --direct)
       passthrough=1
