@@ -28,6 +28,12 @@ fi
 if [ -z "${DEEPSEEK_API_KEY:-}" ] && [ -x "$HOME/bin/op" ]; then
   eval "$("$HOME/bin/op" env deepseek --export 2>/dev/null || true)"
 fi
+if [ -z "${OPENROUTER_API_KEY:-}" ] && [ -x "$HOME/bin/op" ]; then
+  eval "$("$HOME/bin/op" env openrouter --export 2>/dev/null || true)"
+fi
+if [ -z "${FIREWORKS_API_KEY:-}" ] && [ -x "$HOME/bin/op" ]; then
+  eval "$("$HOME/bin/op" env fireworks --export 2>/dev/null || true)"
+fi
 
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 export CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1
