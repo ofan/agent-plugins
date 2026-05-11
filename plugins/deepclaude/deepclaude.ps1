@@ -5,7 +5,7 @@
 .USAGE
     deepclaude                      # DeepSeek V4 Pro (default)
     deepclaude --backend or         # OpenRouter (cheapest)
-    deepclaude --backend fw         # Fireworks AI (fastest)
+
     deepclaude --backend anthropic  # Normal Claude Code
     deepclaude --remote             # Remote control + DeepSeek (browser URL)
     deepclaude --remote -b or       # Remote control + OpenRouter
@@ -38,9 +38,7 @@ $DeepSeekKey = if ($env:DEEPSEEK_API_KEY) { $env:DEEPSEEK_API_KEY } else {
 $OpenRouterKey = if ($env:OPENROUTER_API_KEY) { $env:OPENROUTER_API_KEY } else {
     [Environment]::GetEnvironmentVariable("OPENROUTER_API_KEY", "User")
 }
-$FireworksKey = if ($env:FIREWORKS_API_KEY) { $env:FIREWORKS_API_KEY } else {
-    [Environment]::GetEnvironmentVariable("FIREWORKS_API_KEY", "User")
-}
+
 
 $Providers = @{
     ds = @{
@@ -57,15 +55,6 @@ $Providers = @{
         opus = "deepseek/deepseek-v4-pro"; sonnet = "deepseek/deepseek-v4-pro"
         haiku = "deepseek/deepseek-v4-pro"; subagent = "deepseek/deepseek-v4-pro"
     }
-    fw = @{
-        name = "Fireworks AI"
-        url = "https://api.fireworks.ai/inference"
-        key = $FireworksKey; keyName = "FIREWORKS_API_KEY"
-        opus = "accounts/fireworks/models/deepseek-v4-pro"
-        sonnet = "accounts/fireworks/models/deepseek-v4-pro"
-        haiku = "accounts/fireworks/models/deepseek-v4-pro"
-        subagent = "accounts/fireworks/models/deepseek-v4-pro"
-    }
 }
 
 function Get-KeyDisplay($k) {
@@ -80,11 +69,11 @@ if ($Status) {
     Write-Host "`n  Keys:" -ForegroundColor Yellow
     Write-Host "    DEEPSEEK_API_KEY:    $(Get-KeyDisplay $DeepSeekKey)"
     Write-Host "    OPENROUTER_API_KEY:  $(Get-KeyDisplay $OpenRouterKey)"
-    Write-Host "    FIREWORKS_API_KEY:   $(Get-KeyDisplay $FireworksKey)"
+
     Write-Host "`n  Backends:" -ForegroundColor Yellow
     Write-Host "    deepclaude              # DeepSeek V4 Pro (default)"
     Write-Host "    deepclaude -b or        # OpenRouter (cheapest)"
-    Write-Host "    deepclaude -b fw        # Fireworks AI (fastest)"
+
     Write-Host "    deepclaude -b anthropic # Normal Claude Code"
     Write-Host ""
     exit 0
@@ -99,7 +88,6 @@ if ($Cost) {
     Write-Host "  ----------      --------   --------   -----------"
     Write-Host "  DeepSeek        `$0.44      `$0.87      `$0.004" -ForegroundColor Green
     Write-Host "  OpenRouter      `$0.44      `$0.87      (provider)"
-    Write-Host "  Fireworks       `$1.74      `$3.48      (provider)"
     Write-Host "  Anthropic       `$3.00      `$15.00     `$0.30"
     Write-Host ""
     Write-Host "  Monthly estimate (heavy use): `$30-80 vs `$200 Anthropic" -ForegroundColor Green
@@ -113,7 +101,7 @@ if ($Help) {
     Write-Host ""
     Write-Host "Usage: deepclaude [-b backend] [--status] [--cost] [--benchmark]"
     Write-Host ""
-    Write-Host "  -b, --backend   ds (default), or, fw, anthropic"
+    Write-Host "  -b, --backend   ds (default), or, anthropic"
     Write-Host "  --status        Show keys and backends"
     Write-Host "  --cost          Pricing comparison"
     Write-Host "  --benchmark     Latency test"
@@ -124,11 +112,11 @@ if ($Help) {
 if ($Benchmark) {
     Write-Host "`n  Latency Benchmark" -ForegroundColor Cyan
     Write-Host "  ==================" -ForegroundColor DarkGray
-    foreach ($id in @("ds","or","fw")) {
+    foreach ($id in @("ds","or")) {
         $p = $Providers[$id]
         Write-Host "  $($p.name)..." -NoNewline
         if (-not $p.key) { Write-Host " SKIP (no key)" -ForegroundColor DarkGray; continue }
-        $useBearer = $id -in @("or","fw")
+        $useBearer = $id -eq "or"
         $headers = if ($useBearer) {
             @{ "Authorization" = "Bearer $($p.key)"; "content-type" = "application/json"; "anthropic-version" = "2023-06-01" }
         } else {
@@ -229,7 +217,7 @@ if ($Backend -eq "anthropic") {
 }
 
 $p = $Providers[$Backend]
-if (-not $p) { Write-Host "ERROR: Unknown backend '$Backend'. Use: ds, or, fw, anthropic" -ForegroundColor Red; exit 1 }
+if (-not $p) { Write-Host "ERROR: Unknown backend '$Backend'. Use: ds, or, anthropic" -ForegroundColor Red; exit 1 }
 if (-not $p.key) { Write-Host "ERROR: $($p.keyName) not set" -ForegroundColor Red; exit 1 }
 
 Write-Host "`n  Launching Claude Code via $($p.name)..." -ForegroundColor Cyan

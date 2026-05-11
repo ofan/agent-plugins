@@ -1,7 +1,7 @@
 # deepclaude
 
 Packaged Claude Code launcher and local model proxy for DeepSeek, OpenRouter,
-Fireworks, and Anthropic, with slash commands for live backend switching.
+and Anthropic, with slash commands for live backend switching.
 
 This plugin packages and extends the original
 [aattaran/deepclaude](https://github.com/aattaran/deepclaude) project for the
@@ -46,12 +46,11 @@ The launcher should provide provider keys through environment variables or a sec
 ```sh
 DEEPSEEK_API_KEY=...
 OPENROUTER_API_KEY=...
-FIREWORKS_API_KEY=...
 ```
 
-The packaged proxy preserves DeepSeek thinking blocks end-to-end. For OpenRouter
-and Fireworks, thinking blocks are stripped or converted because those backends
-do not reliably support Anthropic thinking replay.
+The packaged proxy preserves DeepSeek thinking blocks end-to-end. For OpenRouter,
+thinking blocks are stripped or converted because that backend does not reliably
+support Anthropic thinking replay.
 
 ## Shared proxy model
 
@@ -81,7 +80,7 @@ default; override with `DEEPCLAUDE_PROXY_HEARTBEAT_INTERVAL`.
 
 - Resuming a transcript that was already corrupted by missing thinking blocks can
   still fail; start a fresh session or compact past the bad turns.
-- DeepSeek preserves thinking replay. OpenRouter and Fireworks do not.
+- DeepSeek preserves thinking replay. OpenRouter does not.
 - `/anthropic` inside a shared-proxy session is best-effort passthrough. For a
   clean Anthropic session, launch normal Claude Code or `deepclaude --backend anthropic`.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # deepclaude — Use Claude Code with DeepSeek V4 Pro or other cheap backends
-# Usage: deepclaude [--backend ds|or|fw|anthropic] [--remote] [--status] [--cost] [--benchmark]
+# Usage: deepclaude [--backend ds|or|anthropic] [--remote] [--status] [--cost] [--benchmark]
 
 set -euo pipefail
 
@@ -9,7 +9,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # --- Config ---
 DEEPSEEK_URL="https://api.deepseek.com/anthropic"
 OPENROUTER_URL="https://openrouter.ai/api"
-FIREWORKS_URL="https://api.fireworks.ai/inference"
 
 BACKEND="${CHEAPCLAUDE_DEFAULT_BACKEND:-ds}"
 ACTION="launch"
@@ -60,17 +59,9 @@ resolve_backend() {
             opus="deepseek/deepseek-v4-pro"; sonnet="deepseek/deepseek-v4-pro"
             haiku="deepseek/deepseek-v4-pro"; subagent="deepseek/deepseek-v4-pro"
             ;;
-        fw|fireworks)
-            key="${FIREWORKS_API_KEY:-}"
-            [[ -z "$key" ]] && { echo "ERROR: FIREWORKS_API_KEY not set" >&2; exit 1; }
-            url="$FIREWORKS_URL"
-            opus="accounts/fireworks/models/deepseek-v4-pro"
-            sonnet="accounts/fireworks/models/deepseek-v4-pro"
-            haiku="accounts/fireworks/models/deepseek-v4-pro"
-            subagent="accounts/fireworks/models/deepseek-v4-pro"
-            ;;
+
         anthropic) ;;
-        *) echo "ERROR: Unknown backend '$BACKEND'. Use: ds, or, fw, anthropic" >&2; exit 1 ;;
+        *) echo "ERROR: Unknown backend '$BACKEND'. Use: ds, or, anthropic" >&2; exit 1 ;;
     esac
     RESOLVED_URL="$url"; RESOLVED_KEY="$key"
     RESOLVED_OPUS="$opus"; RESOLVED_SONNET="$sonnet"
@@ -93,12 +84,10 @@ show_status() {
     echo "  Keys:"
     echo "    DEEPSEEK_API_KEY:    $(mask_key "${DEEPSEEK_API_KEY:-}")"
     echo "    OPENROUTER_API_KEY:  $(mask_key "${OPENROUTER_API_KEY:-}")"
-    echo "    FIREWORKS_API_KEY:   $(mask_key "${FIREWORKS_API_KEY:-}")"
     echo ""
     echo "  Backends:"
     echo "    deepclaude                  # DeepSeek V4 Pro (default)"
     echo "    deepclaude -b or            # OpenRouter (cheapest)"
-    echo "    deepclaude -b fw            # Fireworks AI (fastest)"
     echo "    deepclaude -b anthropic     # Normal Claude Code"
     echo "    deepclaude --remote         # Remote control + DeepSeek"
     echo "    deepclaude --remote -b or   # Remote control + OpenRouter"
@@ -123,7 +112,6 @@ show_cost() {
     echo "  ----------      --------   --------   -----------"
     echo "  DeepSeek        \$0.44      \$0.87      \$0.004"
     echo "  OpenRouter      \$0.44      \$0.87      (provider)"
-    echo "  Fireworks       \$1.74      \$3.48      (provider)"
     echo "  Anthropic       \$3.00      \$15.00     \$0.30"
     echo ""
     echo "  Monthly estimate (heavy use, 25 days): \$30-80"
@@ -136,7 +124,7 @@ show_help() {
     echo "Usage: deepclaude [options] [-- claude-args...]"
     echo ""
     echo "Options:"
-    echo "  -b, --backend <ds|or|fw|anthropic>  Backend (default: ds)"
+    echo "  -b, --backend <ds|or|anthropic>  Backend (default: ds)"
     echo "  -r, --remote                        Remote control mode (browser URL)"
     echo "  --status                             Show keys and backends"
     echo "  --cost                               Pricing comparison"
@@ -147,7 +135,6 @@ show_help() {
     echo "Environment variables:"
     echo "  DEEPSEEK_API_KEY      DeepSeek API key (required for ds)"
     echo "  OPENROUTER_API_KEY    OpenRouter API key (required for or)"
-    echo "  FIREWORKS_API_KEY     Fireworks API key (required for fw)"
     echo "  CHEAPCLAUDE_DEFAULT_BACKEND  Default backend (default: ds)"
 }
 
@@ -156,9 +143,8 @@ do_switch() {
     case "$backend" in
         ds|deepseek)   backend="deepseek" ;;
         or|openrouter) backend="openrouter" ;;
-        fw|fireworks)  backend="fireworks" ;;
         anthropic)     backend="anthropic" ;;
-        *) echo "ERROR: Unknown backend '$backend'. Use: ds, or, fw, anthropic" >&2; exit 1 ;;
+        *) echo "ERROR: Unknown backend '$backend'. Use: ds, or, anthropic" >&2; exit 1 ;;
     esac
     local resp
     resp=$(curl -sX POST http://127.0.0.1:3200/_proxy/mode -d "backend=$backend" 2>/dev/null) || {
@@ -171,12 +157,11 @@ run_benchmark() {
     echo ""
     echo "  Latency Benchmark (1 request each)"
     echo "  ==================================="
-    for name in deepseek openrouter fireworks; do
+    for name in deepseek openrouter; do
         local url="" key="" model=""
         case "$name" in
             deepseek)   url="$DEEPSEEK_URL"; key="${DEEPSEEK_API_KEY:-}"; model="deepseek-v4-pro" ;;
             openrouter) url="$OPENROUTER_URL"; key="${OPENROUTER_API_KEY:-}"; model="deepseek/deepseek-v4-pro" ;;
-            fireworks)  url="$FIREWORKS_URL"; key="${FIREWORKS_API_KEY:-}"; model="accounts/fireworks/models/deepseek-v4-pro" ;;
         esac
         if [[ -z "$key" ]]; then echo "  $name: SKIP (no key)"; continue; fi
         local start_ms=$(date +%s%3N 2>/dev/null || python3 -c 'import time;print(int(time.time()*1000))')

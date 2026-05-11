@@ -29,7 +29,6 @@ const MODEL_REMAP = {
 const PRICING_PER_M = {
     deepseek:   { input: 0.44,  output: 0.87 },
     openrouter: { input: 0.44,  output: 0.87 },
-    fireworks:  { input: 1.74,  output: 3.48 },
     anthropic:  { input: 3.00,  output: 15.00 },
     _single:    { input: 0.44,  output: 0.87 },
 };
@@ -199,7 +198,7 @@ function parseControlBody(body) {
 export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends, defaultMode, idleTtlMs = DEFAULT_IDLE_TTL_MS, sessionTtlMs = DEFAULT_SESSION_TTL_MS }) {
     return new Promise((resolve, reject) => {
         const initialTarget = new URL(targetUrl);
-        const initialBearer = targetUrl.includes('openrouter') || targetUrl.includes('fireworks');
+        const initialBearer = targetUrl.includes('openrouter');
 
         const allBackends = {};
         if (backends) {
@@ -207,7 +206,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                 allBackends[name] = {
                     target: new URL(cfg.url),
                     apiKey: cfg.apiKey,
-                    useBearer: cfg.url.includes('openrouter') || cfg.url.includes('fireworks'),
+                    useBearer: cfg.url.includes('openrouter'),
                 };
             }
         }
