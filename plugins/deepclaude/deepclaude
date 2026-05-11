@@ -1,0 +1,393 @@
+#!/usr/bin/env bash
+# deepclaude — Claude Code via DeepSeek/OpenRouter proxy
+# Usage: deepclaude [--backend ds|or|anthropic] [--status|--cost|--benchmark|--switch <b>|--help] [-- <claude-args>]
+
+set -eu
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROXY_SCRIPT="$SCRIPT_DIR/proxy/start-proxy.js"
+PROXY_PORT="${DEEPCLAUDE_PROXY_PORT:-3200}"
+PROXY_PID=""
+HEARTBEAT_PID=""
+PROXY_LOG="${TMPDIR:-/tmp}/deepclaude-proxy.$$"
+SESSION_ID="${DEEPCLAUDE_SESSION_ID:-}"
+HEARTBEAT_INTERVAL="${DEEPCLAUDE_PROXY_HEARTBEAT_INTERVAL:-30}"
+
+# --- Helpers ---
+
+mask_key() {
+    local k="$1"
+    if [[ -z "$k" ]]; then echo "MISSING"; else echo "set (****${k: -4})"; fi
+}
+
+clean_path() {
+    local exclude1="$1" exclude2="$HOME/bin" result="" saved_IFS="$IFS"
+    IFS=:
+    for p in $PATH; do
+        [ "$p" = "$exclude1" ] && continue
+        [ "$p" = "$exclude2" ] && continue
+        [ -z "$p" ] && continue
+        result="${result:+$result:}$p"
+    done
+    IFS="$saved_IFS"
+    echo "$result"
+}
+
+# --- Backend resolution (single source of truth for model names) ---
+
+resolve_backend() {
+    case "$BACKEND" in
+        deepseek)
+            [ -n "${DEEPSEEK_API_KEY:-}" ] || { echo "deepclaude: DEEPSEEK_API_KEY is not set" >&2; exit 1; }
+            TARGET_URL="https://api.deepseek.com/anthropic"
+            TARGET_KEY="$DEEPSEEK_API_KEY"
+            OPUS_MODEL="deepseek-v4-pro[1m]"
+            SONNET_MODEL="deepseek-v4-pro[1m]"
+            HAIKU_MODEL="deepseek-v4-flash[1m]"
+            SUBAGENT_MODEL="deepseek-v4-flash[1m]"
+            ;;
+        openrouter)
+            [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "deepclaude: OPENROUTER_API_KEY is not set" >&2; exit 1; }
+            TARGET_URL="https://openrouter.ai/api/v1"
+            TARGET_KEY="$OPENROUTER_API_KEY"
+            OPUS_MODEL="deepseek/deepseek-v4-pro[1m]"
+            SONNET_MODEL="deepseek/deepseek-v4-pro[1m]"
+            HAIKU_MODEL="deepseek/deepseek-v4-pro[1m]"
+            SUBAGENT_MODEL="deepseek/deepseek-v4-pro[1m]"
+            ;;
+        codex)
+            [ -n "${OPENAI_API_KEY:-}" ] || { echo "deepclaude: OPENAI_API_KEY is not set" >&2; exit 1; }
+            TARGET_URL="https://api.openai.com/v1"
+            TARGET_KEY="$OPENAI_API_KEY"
+            OPUS_MODEL="gpt-5.5[1m]"
+            SONNET_MODEL="gpt-5.4[1m]"
+            HAIKU_MODEL="gpt-5.4[1m]"
+            SUBAGENT_MODEL="gpt-5.4[1m]"
+            ;;
+        anthropic)
+            OPUS_MODEL=""
+            SONNET_MODEL=""
+            HAIKU_MODEL=""
+            SUBAGENT_MODEL=""
+            ;;
+    esac
+}
+
+# --- Proxy lifecycle ---
+
+cleanup_proxy() {
+    if [ -n "$HEARTBEAT_PID" ] && kill -0 "$HEARTBEAT_PID" 2>/dev/null; then
+        kill "$HEARTBEAT_PID" 2>/dev/null || true
+        wait "$HEARTBEAT_PID" 2>/dev/null || true
+    fi
+    if [ -n "$SESSION_ID" ]; then
+        curl -fsS -X POST "http://127.0.0.1:$PROXY_PORT/_proxy/session" \
+            -d "action=stop&session=$SESSION_ID" >/dev/null 2>&1 || true
+    fi
+    if [ "${DEEPCLAUDE_STOP_PROXY_ON_EXIT:-0}" = "1" ] && [ -n "$PROXY_PID" ] && kill -0 "$PROXY_PID" 2>/dev/null; then
+        kill "$PROXY_PID" 2>/dev/null || true
+        wait "$PROXY_PID" 2>/dev/null || true
+    fi
+    rm -f "$PROXY_LOG"
+}
+
+start_heartbeat() {
+    curl -fsS -X POST "http://127.0.0.1:$PROXY_PORT/_proxy/session" \
+        -d "action=heartbeat&session=$SESSION_ID&pid=$$" >/dev/null 2>&1 || true
+    (
+        while :; do
+            sleep "$HEARTBEAT_INTERVAL" || exit 0
+            curl -fsS -X POST "http://127.0.0.1:$PROXY_PORT/_proxy/session" \
+                -d "action=heartbeat&session=$SESSION_ID&pid=$$" >/dev/null 2>&1 || exit 0
+        done
+    ) &
+    HEARTBEAT_PID=$!
+}
+
+trap cleanup_proxy EXIT INT TERM
+
+# --- Commands ---
+
+show_status() {
+    echo ""
+    echo "  deepclaude — Status"
+    echo "  ==================="
+    echo ""
+    echo "  Keys:"
+    echo "    DEEPSEEK_API_KEY:    $(mask_key "${DEEPSEEK_API_KEY:-}")"
+    echo "    OPENROUTER_API_KEY:  $(mask_key "${OPENROUTER_API_KEY:-}")"
+    echo "    OPENAI_API_KEY:       $(mask_key "${OPENAI_API_KEY:-}")"
+    echo ""
+    echo "  Backends:"
+    echo "    deepclaude                  # DeepSeek V4 Pro (default)"
+    echo "    deepclaude -b or            # OpenRouter"
+    echo "    deepclaude -b cx            # OpenAI Codex (GPT-5.5/5.4)"
+    echo "    deepclaude -b anthropic     # Normal Claude Code"
+    echo ""
+    local ps
+    ps=$(curl -sS "http://127.0.0.1:$PROXY_PORT/_proxy/status" 2>/dev/null) || ps=""
+    if [[ -n "$ps" ]]; then
+        echo "  Proxy: running"
+        echo "    $ps"
+    else
+        echo "  Proxy: not running"
+    fi
+    echo ""
+}
+
+show_cost() {
+    echo ""
+    echo "  Pricing (per 1M tokens)"
+    echo "  ======================="
+    echo ""
+    echo "  Provider        Input     Output    Cache Hit"
+    echo "  ----------      -----     ------    ---------"
+    echo "  DeepSeek        \$0.44     \$0.87     \$0.004"
+    echo "  OpenRouter      \$0.44     \$0.87     (provider)"
+    echo "  Codex (GPT-5)   \$5.00     \$30.00    (standard)"
+    echo "  Anthropic       \$3.00     \$15.00    \$0.30"
+    echo ""
+}
+
+show_help() {
+    echo "deepclaude — Claude Code with cheap backends"
+    echo ""
+    echo "Usage: deepclaude [options] [-- <claude-args>]"
+    echo ""
+    echo "Options:"
+    echo "  -b, --backend <ds|or|cx|anthropic> Backend (default: deepseek)"
+    echo "  -s, --switch <backend>            Switch proxy mid-session"
+    echo "  --status                           Show keys and proxy status"
+    echo "  --cost                             Pricing comparison"
+    echo "  --benchmark                        Latency test"
+    echo "  -h, --help                         This help"
+    echo ""
+    echo "Environment:"
+    echo "  DEEPSEEK_API_KEY      DeepSeek API key"
+    echo "  OPENROUTER_API_KEY    OpenRouter API key"
+    echo "  DEEPCLAUDE_PROXY_PORT  Proxy port (default: 3200)"
+}
+
+do_switch() {
+    local backend="$1"
+    case "$backend" in
+        ds|deepseek)   backend="deepseek" ;;
+        or|openrouter) backend="openrouter" ;;
+        cx|codex)      backend="codex" ;;
+        anthropic)     backend="anthropic" ;;
+        *) echo "deepclaude: unknown backend '$backend'" >&2; exit 1 ;;
+    esac
+    local resp
+    resp=$(curl -sS -X POST "http://127.0.0.1:$PROXY_PORT/_proxy/mode" -d "backend=$backend" 2>/dev/null) || {
+        echo "deepclaude: proxy not running. Start with: deepclaude" >&2
+        exit 1
+    }
+    echo "  Switched: $resp"
+}
+
+run_benchmark() {
+    echo ""
+    echo "  Latency Benchmark (1 request each)"
+    echo "  ================================="
+    for name in deepseek openrouter codex; do
+        local url="" key="" model="" auth_header="x-api-key"
+        case "$name" in
+            deepseek)
+                url="https://api.deepseek.com/anthropic"
+                key="${DEEPSEEK_API_KEY:-}"
+                model="deepseek-v4-pro"
+                ;;
+            openrouter)
+                url="https://openrouter.ai/api/v1"
+                key="${OPENROUTER_API_KEY:-}"
+                model="deepseek/deepseek-v4-pro"
+                ;;
+            codex)
+                url="https://api.openai.com/v1"
+                key="${OPENAI_API_KEY:-}"
+                model="gpt-5.4"
+                auth_header="Authorization: Bearer"
+                ;;
+        esac
+        if [[ -z "$key" ]]; then echo "  $name: SKIP (no key)"; continue; fi
+        local start_ms
+        start_ms=$(date +%s%3N 2>/dev/null || python3 -c 'import time;print(int(time.time()*1000))')
+        local status
+        status=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$url/chat/completions" \
+            -H "$auth_header: $key" -H "content-type: application/json" \
+            -d "{\"model\":\"$model\",\"max_tokens\":32,\"messages\":[{\"role\":\"user\",\"content\":\"Reply: ok\"}]}" \
+            --max-time 30 2>/dev/null || echo "timeout")
+        local end_ms
+        end_ms=$(date +%s%3N 2>/dev/null || python3 -c 'import time;print(int(time.time()*1000))')
+        local elapsed=$((end_ms - start_ms))
+        if [[ "$status" == "200" ]]; then
+            echo "  $name: OK (${elapsed}ms)"
+        else
+            echo "  $name: FAIL ($status, ${elapsed}ms)"
+        fi
+    done
+    echo ""
+}
+
+# --- Launch ---
+
+launch() {
+    resolve_backend
+
+    if [ "$BACKEND" = "anthropic" ]; then
+        echo "  Launching Claude Code (Anthropic direct)..."
+        unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN
+        unset ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL
+        unset ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SUBAGENT_MODEL
+        CLEANED_PATH="$(clean_path "$SCRIPT_DIR")"
+        PATH="$CLEANED_PATH" exec claude "$@"
+    fi
+
+    # Start proxy if not running
+    local ps
+    ps=$(curl -sS "http://127.0.0.1:$PROXY_PORT/_proxy/status" 2>/dev/null) || ps=""
+    if [ -n "$ps" ]; then
+        case "$ps" in
+            *'"live_sessions"'*) ;;
+            *)
+                echo "deepclaude: existing proxy on 127.0.0.1:$PROXY_PORT is too old (no session support)" >&2
+                echo "deepclaude: stop it, reinstall this plugin, then try again" >&2
+                exit 1
+                ;;
+        esac
+        echo "deepclaude: using existing proxy on 127.0.0.1:$PROXY_PORT"
+    else
+        CHEAPCLAUDE_TARGET_URL="$TARGET_URL" CHEAPCLAUDE_API_KEY="$TARGET_KEY" \
+            node "$PROXY_SCRIPT" >"$PROXY_LOG" 2>&1 &
+        PROXY_PID=$!
+
+        local i=0
+        while [ "$i" -lt 50 ]; do
+            if curl -fsS "http://127.0.0.1:$PROXY_PORT/_proxy/status" >/dev/null 2>&1; then
+                break
+            fi
+            if ! kill -0 "$PROXY_PID" 2>/dev/null; then
+                echo "deepclaude: proxy failed to start" >&2
+                sed -n '1,80p' "$PROXY_LOG" >&2
+                exit 1
+            fi
+            i=$((i + 1))
+            sleep 0.1
+        done
+
+        if [ "$i" -ge 50 ]; then
+            echo "deepclaude: proxy did not become ready on 127.0.0.1:$PROXY_PORT" >&2
+            sed -n '1,80p' "$PROXY_LOG" >&2
+            exit 1
+        fi
+
+        echo "deepclaude: started proxy on 127.0.0.1:$PROXY_PORT (backend: $BACKEND)"
+    fi
+
+    # Set proxy mode for this session
+    curl -fsS -X POST "http://127.0.0.1:$PROXY_PORT/_proxy/mode" \
+        -d "backend=$BACKEND&session=$SESSION_ID" >/dev/null || {
+        echo "deepclaude: failed to switch proxy to $BACKEND" >&2
+        exit 1
+    }
+
+    start_heartbeat
+
+    export ANTHROPIC_BASE_URL="http://127.0.0.1:$PROXY_PORT"
+    export DEEPCLAUDE_SESSION_ID="$SESSION_ID"
+    export ANTHROPIC_AUTH_TOKEN="$SESSION_ID"
+    export ANTHROPIC_DEFAULT_OPUS_MODEL="$OPUS_MODEL"
+    export ANTHROPIC_DEFAULT_SONNET_MODEL="$SONNET_MODEL"
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL="$HAIKU_MODEL"
+    export CLAUDE_CODE_SUBAGENT_MODEL="$SUBAGENT_MODEL"
+
+    CLEANED_PATH="$(clean_path "$SCRIPT_DIR")"
+    PATH="$CLEANED_PATH" exec claude "$@"
+}
+
+# --- Main ---
+
+# Detect how we were invoked
+INVOKED_AS="$(basename "$0")"
+
+# Fetch API keys from 1Password if available
+if [ -z "${DEEPSEEK_API_KEY:-}" ] && [ -x "$HOME/bin/op" ]; then
+    eval "$("$HOME/bin/op" env deepseek --export 2>/dev/null || true)"
+fi
+if [ -z "${OPENROUTER_API_KEY:-}" ] && [ -x "$HOME/bin/op" ]; then
+    eval "$("$HOME/bin/op" env openrouter --export 2>/dev/null || true)"
+fi
+
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+export CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1
+
+BACKEND="${DEEPCLAUDE_DEFAULT_BACKEND:-deepseek}"
+ACTION="launch"
+SWITCH_BACKEND=""
+PASSTHROUGH_ARGS=()
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --status)
+            ACTION="status"
+            shift
+            ;;
+        --cost)
+            ACTION="cost"
+            shift
+            ;;
+        --benchmark)
+            ACTION="benchmark"
+            shift
+            ;;
+        --help|-h)
+            ACTION="help"
+            shift
+            ;;
+        --switch|-s)
+            ACTION="switch"
+            SWITCH_BACKEND="$2"
+            shift 2
+            ;;
+        --backend|-b)
+            case "$2" in
+                ds|deepseek)   BACKEND="deepseek" ;;
+                or|openrouter) BACKEND="openrouter" ;;
+                cx|codex)      BACKEND="codex" ;;
+                anthropic)     BACKEND="anthropic" ;;
+                *) echo "deepclaude: unknown backend '$2'" >&2; exit 2 ;;
+            esac
+            shift 2
+            ;;
+        *)
+            PASSTHROUGH_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Restore passthrough args for claude
+set -- "${PASSTHROUGH_ARGS[@]}"
+
+# If invoked as "claude", always launch transparently
+if [ "$INVOKED_AS" = "claude" ]; then
+    ACTION="launch"
+fi
+
+if [ -z "$SESSION_ID" ]; then
+    if command -v uuidgen >/dev/null 2>&1; then
+        SESSION_ID="dcx_$(uuidgen | tr '[:upper:]' '[:lower:]')"
+    else
+        SESSION_ID="dcx_$(date +%s)_$$"
+    fi
+fi
+
+# Commands that don't need a proxy
+case "$ACTION" in
+    status)    show_status ;;
+    cost)      show_cost ;;
+    benchmark) run_benchmark ;;
+    help)      show_help ;;
+    switch)    do_switch "$SWITCH_BACKEND" ;;
+    launch)    launch "$@" ;;
+esac

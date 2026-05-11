@@ -4,6 +4,7 @@ import { startModelProxy } from './model-proxy.js';
 const BACKEND_DEFS = {
     deepseek: { url: 'https://api.deepseek.com/anthropic', keyEnv: 'DEEPSEEK_API_KEY' },
     openrouter: { url: 'https://openrouter.ai/api/v1', keyEnv: 'OPENROUTER_API_KEY' },
+    codex: { url: 'https://api.openai.com/v1', keyEnv: 'OPENAI_API_KEY' },
 };
 
 // Legacy mode: start-proxy.js <targetUrl> <apiKey> (used by deepclaude.sh/ps1)

@@ -2,6 +2,7 @@ import { createServer } from 'http';
 import { request as httpsRequest } from 'https';
 import { URL } from 'url';
 import { Transform } from 'stream';
+import { mapCodexRequest, CodexResponseSSE } from './translate-openai.js';
 
 const ANTHROPIC_FALLBACK = 'https://api.anthropic.com';
 const MODEL_PATHS = ['/v1/messages'];
@@ -23,6 +24,13 @@ const MODEL_REMAP = {
         'claude-sonnet-4-6':  'deepseek/deepseek-v4-flash',
         'claude-sonnet-4-5-20250929': 'deepseek/deepseek-v4-flash',
         'claude-haiku-4-5-20251001':  'deepseek/deepseek-v4-flash',
+    },
+    codex: {
+        'claude-opus-4-7':             'gpt-5.5',
+        'claude-opus-4-6':             'gpt-5.5',
+        'claude-sonnet-4-6':           'gpt-5.4',
+        'claude-sonnet-4-5-20250929':  'gpt-5.4',
+        'claude-haiku-4-5-20251001':   'gpt-5.4',
     },
 };
 
@@ -73,6 +81,10 @@ class UsageNormalizer extends Transform {
             }
 
             if (d.type === 'message_start' && d.message) {
+                if (d.message.model && !d.message.model.endsWith('[1m]')) {
+                    d.message.model += '[1m]';
+                    changed = true;
+                }
                 if (d.message.usage) {
                     this._inputTokens = d.message.usage.input_tokens || 0;
                 } else {
@@ -127,6 +139,9 @@ class UsageNormalizer extends Transform {
 function normalizeJsonBody(buf, opts = {}) {
     try {
         const obj = JSON.parse(buf);
+        if (obj.model && !obj.model.endsWith('[1m]')) {
+            obj.model += '[1m]';
+        }
         if (obj.type === 'message' && !obj.usage) {
             obj.usage = { input_tokens: 0, output_tokens: 0 };
         }
@@ -206,7 +221,7 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                 allBackends[name] = {
                     target: new URL(cfg.url),
                     apiKey: cfg.apiKey,
-                    useBearer: cfg.url.includes('openrouter'),
+                    useBearer: cfg.url.includes('openrouter') || cfg.url.includes('openai'),
                 };
             }
         }
@@ -619,6 +634,11 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                     } catch { /* pass through */ }
                 }
 
+                // Codex/OpenAI: rewrite path from /v1/messages → /v1/chat/completions
+                if (route.mode === 'codex') {
+                    fullPath = '/v1/chat/completions';
+                }
+
                 const opts = {
                     hostname: dest.hostname,
                     port: dest.port || 443,
@@ -643,7 +663,12 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                             (inp, out) => recordUsage(route.mode, inp, out, sessionId),
                             { preserveThinking: route.mode === 'deepseek' }
                         );
-                        proxyRes.pipe(norm).pipe(clientRes);
+                        if (route.mode === 'codex') {
+                            const codexSSE = new CodexResponseSSE();
+                            proxyRes.pipe(codexSSE).pipe(norm).pipe(clientRes);
+                        } else {
+                            proxyRes.pipe(norm).pipe(clientRes);
+                        }
                         proxyRes.on('end', () => {
                             console.error(`[MODEL-PROXY] #${reqId} done in ${((Date.now() - t0) / 1000).toFixed(1)}s (${norm._inputTokens}in/${norm._outputTokens}out)`);
                             finishModelRequest();
