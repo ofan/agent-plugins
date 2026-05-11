@@ -1,7 +1,7 @@
 {
   "name": "deepclaude",
   "description": "Claude Code launcher and proxy for DeepSeek/OpenRouter with slash commands for live backend switching",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "author": {
     "name": "ofan",
     "url": "https://github.com/ofan"
