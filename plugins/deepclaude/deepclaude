@@ -301,6 +301,12 @@ launch() {
     export ANTHROPIC_DEFAULT_HAIKU_MODEL="$HAIKU_MODEL"
     export CLAUDE_CODE_SUBAGENT_MODEL="$SUBAGENT_MODEL"
 
+    echo "" >&2
+    echo "  ▸ backend : $BACKEND" >&2
+    echo "  ▸ opus    : $OPUS_MODEL" >&2
+    echo "  ▸ haiku   : $HAIKU_MODEL" >&2
+    echo "" >&2
+
     CLEANED_PATH="$(clean_path "$SCRIPT_DIR")"
     PATH="$CLEANED_PATH" exec claude "$@"
 }
