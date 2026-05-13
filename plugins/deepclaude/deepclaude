@@ -41,28 +41,28 @@ resolve_backend() {
             [ -n "${DEEPSEEK_API_KEY:-}" ] || { echo "deepclaude: DEEPSEEK_API_KEY is not set" >&2; exit 1; }
             TARGET_URL="https://api.deepseek.com/anthropic"
             TARGET_KEY="$DEEPSEEK_API_KEY"
-            OPUS_MODEL="deepseek-v4-pro[1m]"
-            SONNET_MODEL="deepseek-v4-pro[1m]"
-            HAIKU_MODEL="deepseek-v4-flash[1m]"
-            SUBAGENT_MODEL="deepseek-v4-flash[1m]"
+            OPUS_MODEL="deepseek-v4-pro"
+            SONNET_MODEL="deepseek-v4-pro"
+            HAIKU_MODEL="deepseek-v4-flash"
+            SUBAGENT_MODEL="deepseek-v4-flash"
             ;;
         openrouter)
             [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "deepclaude: OPENROUTER_API_KEY is not set" >&2; exit 1; }
             TARGET_URL="https://openrouter.ai/api/v1"
             TARGET_KEY="$OPENROUTER_API_KEY"
-            OPUS_MODEL="deepseek/deepseek-v4-pro[1m]"
-            SONNET_MODEL="deepseek/deepseek-v4-pro[1m]"
-            HAIKU_MODEL="deepseek/deepseek-v4-pro[1m]"
-            SUBAGENT_MODEL="deepseek/deepseek-v4-pro[1m]"
+            OPUS_MODEL="deepseek/deepseek-v4-pro"
+            SONNET_MODEL="deepseek/deepseek-v4-pro"
+            HAIKU_MODEL="deepseek/deepseek-v4-pro"
+            SUBAGENT_MODEL="deepseek/deepseek-v4-pro"
             ;;
         codex)
             [ -n "${OPENAI_API_KEY:-}" ] || { echo "deepclaude: OPENAI_API_KEY is not set" >&2; exit 1; }
             TARGET_URL="https://api.openai.com/v1"
             TARGET_KEY="$OPENAI_API_KEY"
-            OPUS_MODEL="gpt-5.5[1m]"
-            SONNET_MODEL="gpt-5.4[1m]"
-            HAIKU_MODEL="gpt-5.4[1m]"
-            SUBAGENT_MODEL="gpt-5.4[1m]"
+            OPUS_MODEL="gpt-5.5"
+            SONNET_MODEL="gpt-5.4"
+            HAIKU_MODEL="gpt-5.4"
+            SUBAGENT_MODEL="gpt-5.4"
             ;;
         anthropic)
             OPUS_MODEL=""

@@ -604,18 +604,6 @@ export function startModelProxy({ targetUrl, apiKey, startPort = 3200, backends,
                     } catch { /* not JSON or parse error, pass through */ }
                 }
 
-                // Strip [1m] from model name before forwarding to backend.
-                // [1m] is Claude Code's 1M-context signal — backends reject it.
-                if (isModelCall) {
-                    try {
-                        const parsed = JSON.parse(body);
-                        if (parsed.model && parsed.model.endsWith('[1m]')) {
-                            parsed.model = parsed.model.slice(0, -4);
-                            body = Buffer.from(JSON.stringify(parsed));
-                        }
-                    } catch { /* pass through */ }
-                }
-
                 // Strip thinking blocks before forwarding.
                 // Non-Anthropic: strip ALL blocks — backends reject thinking blocks
                 // they didn't generate, even unsigned ones.
