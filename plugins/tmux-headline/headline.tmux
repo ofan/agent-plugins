@@ -72,7 +72,7 @@ DEFAULT_BORDER='#{?pane_active,#[reverse],}#P #[default]"#{pane_title}"'
 CURRENT_BORDER="$(tmux show -gv pane-border-format 2>/dev/null)"
 if [ -z "$CURRENT_BORDER" ] || [ "$CURRENT_BORDER" = "$DEFAULT_BORDER" ] || is_legacy "$CURRENT_BORDER"; then
   tmux set -g pane-border-format \
-    "#{pane_index} ${HEADLINE_INACTIVE} #[fg=cyan]#{session_name}#[default] #[dim]#{b:pane_current_path}#[default]"
+    "#{pane_index} ${HEADLINE_INACTIVE} #[fg=cyan]#{session_name}#[default] #[fg=green]#[bold]\$#{?@cost_total,#{@cost_total},0.00}#[default] #[dim]#{b:pane_current_path}#[default]"
 fi
 
 # 2. window tabs
