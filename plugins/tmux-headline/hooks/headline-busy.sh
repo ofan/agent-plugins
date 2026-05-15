@@ -23,7 +23,7 @@ if [ -n "${TMUX_PANE:-}" ]; then
 fi
 
 # 2. Stickiness guard
-echo "$INPUT" | python3 -c '
+OUTPUT=$(echo "$INPUT" | python3 -c '
 import json, os, re, sys
 
 STOP = {"a","an","the","and","or","but","in","on","at","to","for","of","is","it",
@@ -96,4 +96,18 @@ print(json.dumps({
         "sessionTitle": emit
     }
 }))
-'
+')
+
+# Extract headline from hook output and set @headline for tmux tabs
+HEADLINE=$(echo "$OUTPUT" | python3 -c "
+import json,sys
+try:
+    d = json.load(sys.stdin)
+    print(d.get('hookSpecificOutput',{}).get('sessionTitle',''))
+except: pass
+" 2>/dev/null)
+if [ -n "$HEADLINE" ] && [ -n "${TMUX_PANE:-}" ]; then
+    tmux set-option -p -t "$TMUX_PANE" @headline "$HEADLINE" 2>/dev/null || true
+fi
+
+echo "$OUTPUT"
