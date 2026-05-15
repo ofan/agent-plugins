@@ -17,12 +17,15 @@ set -euo pipefail
 
 INPUT=$(cat)
 
-# 1. Mark pane busy
-if [ -n "${TMUX_PANE:-}" ]; then
-  tmux set-option -p -t "$TMUX_PANE" @claude_busy 1 2>/dev/null || true
+# 1. Mark pane busy — TMUX_PANE not inherited, use display-message
+PANE="${TMUX_PANE:-$(tmux display-message -p '#{pane_id}' 2>/dev/null)}"
+if [ -n "$PANE" ]; then
+  tmux set-option -p -t "$PANE" @claude_busy 1 2>/dev/null || true
 fi
 
-# 2. Stickiness guard
+# 2. Stickiness guard: keep existing headline, only generate if nothing is set.
+# Preference: current sessionTitle > last-good > candidate from prompt.
+# Once set (via /headline or first prompt), stays until explicitly changed.
 OUTPUT=$(echo "$INPUT" | python3 -c '
 import json, os, re, sys
 
@@ -54,8 +57,6 @@ prompt   = data.get("prompt") or ""
 current  = (data.get("session_title") or "").strip()
 sid      = data.get("session_id") or ""
 
-# Per-session state file: remembers the last good headline so meta prompts
-# can recover after a degradation.
 state_path = os.path.join(DATA_DIR, f"{sid}.last_good") if sid else None
 last_good = ""
 if state_path and os.path.exists(state_path):
@@ -65,23 +66,24 @@ if state_path and os.path.exists(state_path):
     except Exception:
         pass
 
-candidate = compress(prompt)
-cand_words = len(candidate.split())
-cur_words  = len(current.split())
+cur_words = len(current.split())
 
-if cand_words >= MIN_WORDS:
-    emit = candidate
-elif cur_words >= MIN_WORDS:
+# Keep existing headline if it has substance. Only generate a new one
+# if nothing is set yet (fresh session or degraded to a single word).
+if cur_words >= MIN_WORDS:
     emit = current
 elif last_good:
     emit = last_good
 else:
-    emit = ""
+    candidate = compress(prompt)
+    if len(candidate.split()) >= MIN_WORDS:
+        emit = candidate
+    else:
+        emit = ""
 
 if not emit:
     print("{}"); sys.exit(0)
 
-# Persist any successful pick — this is what makes recovery possible.
 if state_path:
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
@@ -106,8 +108,8 @@ try:
     print(d.get('hookSpecificOutput',{}).get('sessionTitle',''))
 except: pass
 " 2>/dev/null)
-if [ -n "$HEADLINE" ] && [ -n "${TMUX_PANE:-}" ]; then
-    tmux set-option -p -t "$TMUX_PANE" @headline "$HEADLINE" 2>/dev/null || true
+if [ -n "$HEADLINE" ] && [ -n "$PANE" ]; then
+    tmux set-option -p -t "$PANE" @headline "$HEADLINE" 2>/dev/null || true
 fi
 
 echo "$OUTPUT"
