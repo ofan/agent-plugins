@@ -75,7 +75,9 @@ except: pass
     tmux set-option -g @cost_label "an" 2>/dev/null || true
 }
 
-if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
+# Check if proxy is running (DeepSeek/OpenRouter session).
+# If so, proxy cost is the most accurate — no API key needed.
+if curl -sS --max-time 1 "http://127.0.0.1:3200/_proxy/status" >/dev/null 2>&1; then
     deepseek_poll
 elif [ -n "${ANTHROPIC_API_KEY:-}" ] || [ -f "$HOME/.claude/.credentials.json" ]; then
     anthropic_poll
