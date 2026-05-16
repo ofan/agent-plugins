@@ -1,68 +1,59 @@
 #!/usr/bin/env bash
-# Extract a 1-4 word headline from conversation transcript.
-# Supports both Claude Code (role at top level) and Pi (nested message.role) formats.
-# Usage: extract-headline.sh <transcript_path> [current_headline]
+# Generate a 2-3 word workstream headline from conversation context.
+# Reads last N user messages, calls LLM to synthesize the workstream.
+# Usage: extract-headline.sh <transcript_path>
 set -euo pipefail
 
-TRANSCRIPT="$1"
-CURRENT="${2:-}"
-
+TRANSCRIPT="${1:-}"
 [ ! -f "$TRANSCRIPT" ] && exit 0
 
-HEADLINE=$(python3 -c "
-import json, re, sys
-
-STOP = {'a','an','the','and','or','but','in','on','at','to','for','of','is','it',
-        'can','you','please','could','would','should','do','did','this','that',
-        'my','me','i','we','our','be','have','has','had','will','just','also',
-        'with','from','into','about','not','no','so','if','when','how','what',
-        'why','where','which','some','all','any','up','out','now','then','here',
-        'there','very','really','let','got','go','going','want','need','try',
-        'using','look','sure','know','think','see','hey','hi','hello','its',
-        'like','been','was','were','are','does','done','too','more','still',
-        'headline','title','spinner','idle','busy','correct','fix','test'}
-
-last = ''
+# Extract last user messages for context (up to 8, max 200 chars each)
+CONTEXT=$(python3 -c "
+import json
+msgs = []
 try:
-    with open(sys.argv[1]) as f:
+    with open('$TRANSCRIPT') as f:
         for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                msg = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-            # Claude Code format: {role: 'human', content: ...}
-            role = msg.get('role', '')
-            content = msg.get('content', '')
-
-            # Pi format: {type: 'message', message: {role: 'user', content: [...]}}
-            if not role and msg.get('type') == 'message':
-                inner = msg.get('message', {})
-                role = inner.get('role', '')
-                content = inner.get('content', '')
-
-            if role not in ('human', 'user'):
-                continue
-
+            try: d = json.loads(line.strip())
+            except: continue
+            role = d.get('role','') or d.get('message',{}).get('role','')
+            if role not in ('human','user'): continue
+            content = d.get('content','') or d.get('message',{}).get('content','')
             if isinstance(content, list):
-                content = ' '.join(p.get('text','') for p in content if isinstance(p, dict))
-            if isinstance(content, str) and content.strip():
-                last = content.strip()
-except Exception:
-    pass
+                content = ' '.join(p.get('text','') for p in content if isinstance(p,dict))
+            if content and isinstance(content, str):
+                msgs.append(content.strip()[:200])
+    print('\n---\n'.join(msgs[-8:]))
+except: pass
+" 2>/dev/null)
 
-if not last:
-    sys.exit(0)
+[ -z "$CONTEXT" ] && exit 0
 
-words = re.findall(r'[a-z]+', last.lower())
-keep = [w for w in words if w not in STOP and len(w) > 1]
-print(' '.join(keep[:4]))
-" "$TRANSCRIPT" 2>/dev/null) || true
+# Call DeepSeek Flash to synthesize workstream label
+HEADLINE=$(curl -sS --max-time 8 \
+  -H "x-api-key: ${DEEPSEEK_API_KEY:-}" \
+  -H "content-type: application/json" \
+  -H "anthropic-version: 2023-06-01" \
+  -X POST "https://api.deepseek.com/anthropic/v1/messages" \
+  -d "$(python3 -c "
+import json
+ctx = json.dumps('''$CONTEXT''')
+sys_prompt = 'You name coding workstreams. Output EXACTLY 2-3 lowercase words describing the PRIMARY task in this conversation. No punctuation. No explanation. Just the label.\n\nRules:\n- Synthesize the overall workstream from ALL messages, not just the last one\n- Examples: fix tmux spinner, add cost tracking, refactor proxy, debug oom, setup ingress\n- Use specific domain terms when clear (k8s, tmux, nginx, etc.)\n- Never repeat a prompt verbatim'
+print(json.dumps({
+    'model': 'deepseek-v4-flash',
+    'max_tokens': 20,
+    'temperature': 0,
+    'system': sys_prompt,
+    'messages': [{'role': 'user', 'content': f'Coding session messages:\n\n{ctx}\n\nWorkstream label:'}]
+}))
+")" 2>/dev/null | python3 -c "
+import sys,json,re
+try:
+    d=json.load(sys.stdin)
+    text = d['content'][0]['text'].strip().lower()
+    words = re.findall(r'[a-z0-9]+', text)
+    print(' '.join(words[:3]))
+except: pass
+" 2>/dev/null)
 
-[ -z "$HEADLINE" ] && exit 0
-[ "$HEADLINE" = "$CURRENT" ] && exit 0
-
-echo "$HEADLINE"
+[ -n "$HEADLINE" ] && echo "$HEADLINE"
