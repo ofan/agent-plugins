@@ -5,7 +5,7 @@ description: Auto-call /rename when the workstream changes. Session start, topic
 
 # Track the workstream
 
-**Call `/rename <2-4 words>`** (space-separated, no hyphens) when the workstream genuinely changes. This sets the session name, which syncs to the tmux tab via the plugin.
+**Call `/rename <2-4 words>`** with EXPLICIT space-separated words. NEVER call `/rename` without arguments — that auto-generates a hyphenated slug. Always provide the words yourself. This sets the session name, which syncs to the tmux tab via the plugin.
 
 ## When to call
 
