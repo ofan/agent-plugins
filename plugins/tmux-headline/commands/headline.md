@@ -23,6 +23,21 @@ if ! printf '%s' "$TITLE" | grep -qE '^[a-z]+( [a-z]+){1,3}$'; then
 fi
 tmux select-pane -t "$PANE" -T "$TITLE"
 tmux set-option -p -t "$PANE" @headline "$TITLE" 2>/dev/null || true
+# Sync to Claude session JSON so status line updates (same as /rename)
+CLAUDE_SESSION_ID="${CLAUDE_SESSION_ID:-}"
+if [ -n "$CLAUDE_SESSION_ID" ]; then
+  for f in "$HOME/.claude/sessions"/*.json; do
+    python3 -c "
+import json, sys
+with open('$f') as fh: d = json.load(fh)
+if d.get('sessionId') == '$CLAUDE_SESSION_ID':
+  d['customTitle'] = '$TITLE'
+  d['displayTitle'] = '$TITLE'
+  with open('$f', 'w') as fh: json.dump(d, fh)
+  sys.exit(0)
+" 2>/dev/null && break
+  done 2>/dev/null || true
+fi
 echo "headline → $TITLE"
 ```
 

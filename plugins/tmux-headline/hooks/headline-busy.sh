@@ -15,18 +15,18 @@ if [ -n "$PANE" ]; then
   tmux set-option -p -t "$PANE" @claude_busy 1 2>/dev/null || true
 fi
 
-# 2. Sync pane_title → @headline
+# 2. Sync @headline → pane_title. /headline always wins.
+#    Falls back to session_title so /rename also updates pane.
 if [ -n "$PANE" ]; then
-    TITLE=$(tmux display -p -t "$PANE" '#{pane_title}' 2>/dev/null || true)
-    CLEAN=$(echo "$TITLE" | python3 -c "
-import sys, re
-t = sys.stdin.read().strip()
-# Strip leading glyph: ✳ ✻ ✶ ✷ ✺ ✸ ✦ or any braille U+2800-U+28FF
-t = re.sub(r'^[✻✳✶✷✺✸✦⠀-⣿]\s*', '', t)
-print(t.strip())
-" 2>/dev/null)
-    if [ -n "$CLEAN" ]; then
-        tmux set-option -p -t "$PANE" @headline "$CLEAN" 2>/dev/null || true
+    HEADLINE=$(tmux show-option -p -t "$PANE" @headline 2>/dev/null | sed 's/^@headline //' || true)
+    if [ -n "$HEADLINE" ] && [ "$HEADLINE" != "unset" ]; then
+        tmux select-pane -t "$PANE" -T "$HEADLINE" 2>/dev/null || true
+    else
+        FALLBACK=$(echo "$INPUT" | python3 -c "import sys,json; print((json.load(sys.stdin).get('"'"'session_title'"'"') or '"'"''"'"').strip())" 2>/dev/null || true)
+        if [ -n "$FALLBACK" ]; then
+            tmux select-pane -t "$PANE" -T "$FALLBACK" 2>/dev/null || true
+            tmux set-option -p -t "$PANE" @headline "$FALLBACK" 2>/dev/null || true
+        fi
     fi
 fi
 

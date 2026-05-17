@@ -6,8 +6,7 @@
 # Throttled to once per 30s.
 set -euo pipefail
 
-SID="${DEEPCLAUDE_SESSION_ID:-$(date +%s)}"
-CACHE="$HOME/.cache/tmux-headline/cost-${SID:0:8}.json"
+CACHE="$HOME/.cache/tmux-headline/cost.json"
 BALANCE_LOG="$HOME/.cache/tmux-headline/balance.log"
 THROTTLE=30
 
@@ -72,4 +71,3 @@ parts=""
 [ -z "$parts" ] && [ -n "$balance" ] && parts="\$$balance"
 
 echo "{\"ts\":$(date +%s),\"display\":\"$parts\",\"label\":\"ds\"}" > "$CACHE"
-tmux set-option -g @cost_total "$parts" 2>/dev/null || true
