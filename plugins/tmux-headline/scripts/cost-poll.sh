@@ -6,7 +6,8 @@
 # Throttled to once per 30s.
 set -euo pipefail
 
-CACHE="$HOME/.cache/tmux-headline/cost.json"
+SID="${DEEPCLAUDE_SESSION_ID:-$(date +%s)}"
+CACHE="$HOME/.cache/tmux-headline/cost-${SID:0:8}.json"
 BALANCE_LOG="$HOME/.cache/tmux-headline/balance.log"
 THROTTLE=30
 

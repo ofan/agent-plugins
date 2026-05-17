@@ -39,18 +39,14 @@ function ctxSize(cw) {
   return Math.round(sz / 1e3) + 'k';
 }
 
-function fmtTokens(n) {
-  if (!n && n !== 0) return '?';
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'm';
-  if (n >= 1e3) return Math.round(n / 1e3) + 'k';
-  return String(n);
-}
-
 function resetTime(epoch, short) {
   const diff = epoch - Date.now() / 1000;
   if (diff <= 0) return 'now';
   if (short) {
-    return dur(diff * 1000);
+    const m = Math.floor(diff / 60);
+    if (m < 60) return m + 'm';
+    const h = Math.floor(m / 60), rm = m % 60;
+    return h + 'h' + (rm ? String(rm).padStart(2, '0') : '');
   }
   // Show day + time in local TZ
   const d = new Date(epoch * 1000);
@@ -60,39 +56,11 @@ function resetTime(epoch, short) {
   return `${days[d.getDay()]} ${hh}:${mm}`;
 }
 
-function usageBar(pct, w = 8) {
-  const pctClamped = Math.max(0, Math.min(100, Math.round(pct || 0)));
-  const filled = Math.round(pctClamped / 100 * w);
-  return `[${pc(pctClamped)}${'#'.repeat(filled)}${R}${DIM}${'-'.repeat(w - filled)}${R}]`;
-}
-
-function limitSegment(label, pct, epoch, shortReset) {
-  if (pct == null) return '';
-  const rounded = Math.max(0, Math.min(100, Math.round(pct)));
-  return `${DIM}${label}${R} ${usageBar(rounded)} ${pc(rounded)}${rounded}% used${R} ${DIM}reset ${resetTime(epoch, shortReset)}${R}`;
-}
-
-function contextSegment(total, ctxWindow) {
-  if (!(total && ctxWindow)) return '';
-  return `${DIM}ctx ${R}${fmtTokens(total)}/${fmtTokens(ctxWindow)}${R}`;
-}
-
-function projectGitSegment(cwdRaw, git) {
-  const cwd = shortCwd(cwdRaw);
-  return git ? `${FG}${cwd}${R} ${DIM}@${R} ${git}` : `${FG}${cwd}${R}`;
-}
-
 function planUsage() {
   try {
-    const f = os.homedir() + '/.local/share/tmux-headline/data/usage.json';
-    // Search for poll script in known plugin install locations
-    const pluginDirs = [
-      '/.claude/scripts/usage-poll.sh',                                                        // user-copied stable location
-      '/.claude/plugins/local/tmux-headline/scripts/usage-poll.sh',                            // local dev
-      '/.claude/plugins/marketplaces/ofan-plugins/plugins/tmux-headline/scripts/usage-poll.sh', // marketplace
-    ];
-    const pollScript = pluginDirs.map(d => os.homedir() + d).find(p => fs.existsSync(p));
-    if (!pollScript) return '';
+    const f = os.homedir() + '/.claude/headline/usage.json';
+    const pollScript = os.homedir() + '/.claude/scripts/usage-poll.sh';
+    if (!fs.existsSync(pollScript)) return '';
     let data;
     try { data = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { data = null; }
     // Auto-poll if missing or stale (> 120s)
@@ -103,62 +71,32 @@ function planUsage() {
     if (Date.now() / 1000 - data.ts > 3600) return '';
     const h5 = Math.round(data['5h'] * 100);
     const d7 = Math.round(data['7d'] * 100);
-    return [
-      limitSegment('5h', h5, data['5h_reset'], true),
-      limitSegment('7d', d7, data['7d_reset'], false),
-    ].filter(Boolean).join(`${DIM} · ${R}`);
+    const h5r = resetTime(data['5h_reset'], true);
+    const d7r = resetTime(data['7d_reset'], false);
+    // Colors: filled bar + label = usage-colored (green/yellow/red)
+    //         empty bar = dim grey, reset time = dim
+    const BSTYLE = process.env.HEADLINE_BAR_STYLE || 'solid';
+    const bar = (pct, w) => {
+      const label = `${pct}%`;
+      const filled = Math.round(pct / 100 * w);
+      const pad = Math.max(0, Math.floor((w - label.length) / 2));
+      const [fc, ec] = BSTYLE === 'ascii' ? ['=', '-'] : ['█', '░'];
+      let inner = fc.repeat(filled) + ec.repeat(w - filled);
+      inner = inner.slice(0, pad) + label + inner.slice(pad + label.length);
+      let out = '';
+      for (let i = 0; i < inner.length; i++) {
+        const ch = inner[i];
+        const inFilled = i < filled;
+        if (ch === fc || ch === ec) {
+          out += `${inFilled ? pc(pct) : DIM}${ch}${R}`;
+        } else {
+          out += `${pc(pct)}${ch}${R}`;
+        }
+      }
+      return out;
+    };
+    return `${bar(h5, 10)} ${DIM}${h5r}${R} ${DIM}· ${R}${bar(d7, 10)} ${DIM}${d7r}${R}`;
   } catch { return ''; }
-}
-
-function codexRateUsage(rateLimits) {
-  if (!rateLimits) return '';
-  const primary = rateLimits.primary;
-  const secondary = rateLimits.secondary;
-  const bits = [];
-
-  if (primary?.used_percent != null) {
-    bits.push(limitSegment('5h', primary.used_percent, primary.resets_at, true));
-  }
-  if (secondary?.used_percent != null) {
-    bits.push(limitSegment('7d', secondary.used_percent, secondary.resets_at, false));
-  }
-  return bits.join(` ${DIM}·${R} `);
-}
-
-function codexPayload(input) {
-  if (input?.payload?.type === 'token_count') return input.payload;
-  if (input?.type === 'token_count') return input;
-  return null;
-}
-
-function codexContext(input) {
-  if (input?.type === 'turn_context') return input.payload || input;
-  if (input?.payload?.cwd || input?.payload?.model) return input.payload;
-  return input;
-}
-
-function codexStatusLine(input, opts = {}) {
-  const payload = opts.tokenPayload || codexPayload(input);
-  const ctx = codexContext(input);
-  if (!payload && !ctx?.model && !ctx?.cwd) return '';
-
-  const cwdRaw = ctx?.cwd || process.cwd();
-  const git = opts.git != null ? opts.git : gitStatus(cwdRaw);
-  const model = String(ctx?.model || '?').replace(/\s+/g, '').toLowerCase();
-
-  const total = payload?.info?.total_token_usage?.total_tokens;
-  const ctxWindow = payload?.info?.model_context_window;
-  const ctxPart = contextSegment(total, ctxWindow);
-  const limits = codexRateUsage(payload?.rate_limits);
-
-  const parts = [
-    projectGitSegment(cwdRaw, git),
-    `${DIM}${model}${ctxWindow ? `(${fmtTokens(ctxWindow)})` : ''}${R}`,
-    ctxPart,
-    limits,
-  ].filter(Boolean);
-
-  return parts.join(`${DIM} · ${R}`);
 }
 
 function gitStatus(cwd) {
@@ -193,14 +131,40 @@ function gitStatus(cwd) {
   } catch { return ''; }
 }
 
+function extraUsage() {
+  try {
+    const f = os.homedir() + '/.claude/headline/usage.json';
+    const data = JSON.parse(fs.readFileSync(f, 'utf8'));
+    if (Date.now() / 1000 - data.ts > 3600) return '';
+    if (data.overage == null || data.overage <= 0) return '';
+    const pct = Math.round(data.overage * 100);
+    return `${DIM}Extra ${R}${pc(pct)}${pct}%${R}`;
+  } catch { return ''; }
+}
+
+function costDisplay() {
+  try {
+    const sid = process.env.DEEPCLAUDE_SESSION_ID || '';
+    const base = os.homedir() + '/.cache/tmux-headline/cost';
+    const files = [base + '-' + sid.slice(0,8) + '.json', base + '.json'];
+    let f = '';
+    for (const cand of files) {
+      try { if (fs.existsSync(cand)) { f = cand; break; } } catch {}
+    }
+    if (!f) return '';
+    const data = JSON.parse(fs.readFileSync(f, 'utf8'));
+    const age = Date.now() / 1000 - data.ts;
+    if (age > 300) return '';
+    const label = data.label === 'ds' ? `${Y}ds${R}` : data.label === 'an' ? `${G}an${R}` : '';
+    const display = data.display || (data.cost != null ? `$${data.cost}` : '');
+    if (!display) return '';
+    return `${label} ${G}${display}${R}`;
+  } catch { return ''; }
+}
+
 function main() {
   let j;
   try { j = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.stdout.write('…'); return; }
-
-  if (j?.type === 'event_msg' || j?.type === 'turn_context' || j?.payload?.type === 'token_count') {
-    process.stdout.write(codexStatusLine(j) || '…');
-    return;
-  }
 
   const u = os.userInfo().username;
   const h = os.hostname().split('.')[0];
@@ -210,35 +174,29 @@ function main() {
 
   const cw = j.context_window || {};
   const remaining = cw.remaining_percentage ?? (100 - (cw.used_percentage || 0));
+  const cwd = shortCwd(j.cwd || process.cwd());
   const csz = ctxSize(cw);
   const usedPct = 100 - remaining;
   const ctxUsed = Math.round((cw.context_window_size || 200000) * usedPct / 100);
   const curTok = totalTokens({ total_input_tokens: ctxUsed, total_output_tokens: 0 });
   const git = gitStatus(j.cwd || process.cwd());
 
-  const plan = planUsage();
+  const cost = costDisplay();
+  const isProxy = process.env.DEEPCLAUDE_SESSION_ID || cost.includes('ds');
+  const plan = isProxy ? '' : planUsage();
+  const extra = isProxy ? '' : extraUsage();
 
   const parts = [
-    projectGitSegment(j.cwd || process.cwd(), git),
+    `${FG}${cwd}${R} ${git}`,
     `${DIM}${model}(${csz})${R}`,
-    `${DIM}ctx ${R}${curTok}/${csz}${R}`,
+    `${DIM}ctx ${R}${pc(100 - remaining)}${curTok}/${csz}${R}`,
+    cost,
     plan,
+    extra,
     `${DIM}${u}@${h}${R}`,
   ].filter(Boolean);
 
   process.stdout.write(parts.join(`${DIM} · ${R}`));
 }
 
-if (require.main === module) {
-  try { main(); } catch { process.stdout.write('…'); }
-}
-
-module.exports = {
-  codexRateUsage,
-  codexStatusLine,
-  contextSegment,
-  limitSegment,
-  projectGitSegment,
-  resetTime,
-  usageBar,
-};
+try { main(); } catch { process.stdout.write('…'); }
