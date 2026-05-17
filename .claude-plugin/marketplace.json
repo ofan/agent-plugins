@@ -9,7 +9,7 @@
     {
       "name": "tmux-headline",
       "description": "tmux headlines, spinner/title integration, and usage bars for Claude and Codex workflows",
-      "version": "1.4.0",
+      "version": "1.5.0",
       "source": "./plugins/tmux-headline"
     },
     {
