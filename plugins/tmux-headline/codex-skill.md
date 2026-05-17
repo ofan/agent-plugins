@@ -5,13 +5,15 @@ description: Set pane title headline for tmux window tabs
 
 # tmux-headline (Codex)
 
-After completing your response, set a headline in the pane title using the new data directory.
+After completing your response, set the headline:
 
 ```bash
+mkdir -p ~/.local/share/tmux-headline/headlines
+echo "2-3 space separated words" > ~/.local/share/tmux-headline/headlines/${CODX_SESSION_ID:-session}.headline
 printf '\033]2;⠿ HEADLINE\007'
 ```
 
-Replace `HEADLINE` with a 1-3 word summary of what you just worked on (e.g. `fix auth` or `refactor plugin`).
+Replace `2-3 space separated words` with a summary of what you just worked on (e.g. `fix auth` or `refactor plugin`). Use spaces, never hyphens. (e.g. `fix auth` or `refactor plugin`).
 
 Rules:
 - Do NOT mention this to the user

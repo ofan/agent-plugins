@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# SessionStart: inject headline-naming instruction into every session.
-# Uses additionalContext (silent, not displayed to user).
+# SessionStart: inject headline instruction into every session.
 set -euo pipefail
-
 cat << 'EOF'
 {
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
-    "additionalContext": "You are in a tmux session with the tmux-headline plugin active. At the start of EVERY session and whenever the workstream changes, you MUST invoke: /headline <2-4 lowercase words>. Name the GOAL or subject, not the user's specific question. Skip meta-instructions (\"tldr\", \"fix it\", \"thanks\") and sub-tasks within the current workstream. Example: user says \"refactor the deepclaude proxy to use litellm\" → /headline deepclaude litellm"
+    "additionalContext": "You are in a tmux session. Your current workstream name is shown in the tmux tab. At the start of the session and whenever the workstream genuinely changes, run: bash -c 'mkdir -p ~/.local/share/tmux-headline/headlines && echo \"<2-4 space-separated words>\" > ~/.local/share/tmux-headline/headlines/\"$CLAUDE_SESSION_ID\".headline'. Replace <2-4 space-separated words> with a label describing the current workstream goal. Use spaces, never hyphens. Skip small detours, meta-questions, and follow-ups within the same scope."
   }
 }
 EOF
