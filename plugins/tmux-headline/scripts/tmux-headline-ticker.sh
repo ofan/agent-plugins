@@ -34,7 +34,7 @@ trap 'rm -f "$PID_FILE"' EXIT
 while tmux info >/dev/null 2>&1; do
   # One tmux IPC: enumerate all panes, emit 'x' for each busy one. The
   # case-glob check is a shell builtin (no fork).
-  busy=$(tmux list-panes -a -F '#{?#{&&:#{==:#{@claude_busy},1},#{||:#{==:#{pane_current_command},claude},#{||:#{==:#{pane_current_command},codex},#{||:#{==:#{pane_current_command},node},#{==:#{pane_current_command},pi}}}},x,}' 2>/dev/null)
+  busy=$(tmux list-panes -a -F '#{?#{==:#{@claude_busy},1},x,}' 2>/dev/null)
   case "$busy" in
     *x*)
       tmux set -g @spinner_glyph "${FRAMES[i]}" \; refresh-client -S 2>/dev/null
