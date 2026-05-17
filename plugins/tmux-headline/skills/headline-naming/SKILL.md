@@ -5,7 +5,7 @@ description: Auto-call /rename when the workstream changes. Session start, topic
 
 # Track the workstream
 
-**Call `/rename <2-4 words>`** when the workstream genuinely changes. This sets the session name, which syncs to the tmux tab via the plugin.
+**Call `/rename <2-4 words>`** (space-separated, no hyphens) when the workstream genuinely changes. This sets the session name, which syncs to the tmux tab via the plugin.
 
 ## When to call
 
@@ -33,3 +33,5 @@ If the workstream shift is a genuine new task/feature that will take multiple tu
 | Same scope: "also update the tests for that" | skip |
 | Detour: "btw what port does nginx use?" | skip (single question) |
 | Pivot: "ok let's switch to the billing bug" | `/rename billing bug` |
+
+**Important**: Always use spaces between words, never hyphens. `/rename auth middleware` not `/rename auth-middleware`.
