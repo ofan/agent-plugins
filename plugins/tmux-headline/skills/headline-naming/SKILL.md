@@ -1,17 +1,17 @@
 ---
 name: headline-naming
-description: Use during coding sessions in tmux to keep the pane headline aligned with the current workstream. Trigger when a session begins, when the conversation's subject genuinely shifts, or when a recap reveals a different workstream than the current pane label.
+description: Set the tmux pane headline. MUST invoke at session start, on any topic shift, and after recaps. Do NOT skip.
 ---
 
 # Naming the tmux pane workstream
 
-Whenever the conversation moves to a new goal or subject — at session start, on topic shifts, or when a recap shows the workstream has drifted — invoke:
+**You MUST call `/headline`** at the start of EVERY session and whenever the workstream changes. This is not optional — the user sees the headline in tmux and relies on it.
 
 ```
 /headline <2 to 4 lowercase words>
 ```
 
-This sets the visible tmux pane title to a short workstream label.
+This sets the visible tmux pane title.
 
 ## Rules for the label
 
