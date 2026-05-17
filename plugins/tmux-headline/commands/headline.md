@@ -21,6 +21,7 @@ if ! printf '%s' "$TITLE" | grep -qE '^[a-z]+( [a-z]+){1,3}$'; then
   exit 1
 fi
 tmux select-pane -t "$PANE" -T "$TITLE"
+tmux set-option -p -t "$PANE" @headline "$TITLE" 2>/dev/null || true
 echo "headline → $TITLE"
 ```
 
