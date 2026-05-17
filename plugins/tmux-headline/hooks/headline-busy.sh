@@ -18,7 +18,7 @@ if [ -n "$PANE" ]; then
 fi
 
 # 2 & 3. Sync session_title → @headline → pane_title
-TITLE=$(echo "$INPUT" | python3 -c "import sys,json; print((json.load(sys.stdin).get('session_title') or '').strip())" 2>/dev/null || echo "")
+TITLE=$(echo "$INPUT" | python3 -c "import sys,json; print((json.load(sys.stdin).get('session_title') or '').strip().replace('-',' '))" 2>/dev/null || echo "")
 SID=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null || echo "")
 
 # Persist and guard against degradation
