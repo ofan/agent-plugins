@@ -1,46 +1,35 @@
 ---
 name: headline-naming
-description: Set the tmux pane headline. MUST invoke at session start, on any topic shift, and after recaps. Do NOT skip.
+description: Auto-call /rename when the workstream changes. Session start, topic shifts, after recaps. Use judgment for scope.
 ---
 
-# Naming the tmux pane workstream
+# Track the workstream
 
-**You MUST call `/headline`** at the start of EVERY session and whenever the workstream changes. This is not optional — the user sees the headline in tmux and relies on it.
+**Call `/rename <2-4 words>`** when the workstream genuinely changes. This sets the session name, which syncs to the tmux tab via the plugin.
 
-```
-/headline <2 to 4 lowercase words>
-```
+## When to call
 
-This sets the visible tmux pane title.
+- **Session start** — always. Name the initial goal.
+- **Topic shift** — the conversation moves to a different feature, bug, or system. Call it.
+- **After recap** — the recap shows a different subject than the current name.
 
-## Rules for the label
+## When NOT to call
 
-- **2 to 4 lowercase words**, no punctuation
-- Name the **goal or subject**, not the user's specific question
-- Ignore meta-instructions ("tldr", "fix it", "explain", "show me", "thanks")
-- Skip on sub-tasks within the current workstream — only call when the *subject* changes
+- **Small detour** — user asks a quick sub-question within the same workstream
+- **Follow-ups** — "what about X?", "also fix Y" within same scope
+- **Meta** — "tldr", "thanks", "explain this", "what's that file?"
+- **Same scope** — the current name already matches
+
+## Judgment
+
+If the workstream shift is a genuine new task/feature that will take multiple turns, rename. If it's a single-question detour then back to the main workstream, don't.
 
 ## Examples
 
-| User context | Call |
+| Context | Call? |
 |---|---|
-| New session about home infra | `/headline homeinfra improvement` |
-| Switching to deploy auth service | `/headline auth service deploy` |
-| Working on the same thing → user asks "tldr" | (skip — meta-instruction) |
-| Working on the same thing → user asks "fix that bug" | (skip — sub-task within current workstream) |
-| Conversation pivots from auth to billing | `/headline billing migration` |
-
-## Recap integration
-
-Claude Code may surface a recap line that begins with `※ recap:` and includes both the current state and the next step. Treat the **subject** of the recap as the canonical workstream. If your current pane headline doesn't match it, run `/headline` to sync.
-
-Example:
-> ※ recap: Building memex into a cross-device memory system; daemon and Claude Code plugin are deployed and the v0.6 work is on a feature branch with main protected. Next: draft the setup script…
-
-→ `/headline memex memory system`
-
-## When not to call
-
-- The user's prompt is a follow-up, clarification, ack, or short meta-command
-- The current pane headline already matches the workstream (don't churn)
-- You can't be confident in 2-4 words yet — wait for more context
+| Start of session: "fix the auth middleware" | `/rename auth middleware` |
+| Mid-session: "now let's add rate limiting" | `/rename rate limiting` |
+| Same scope: "also update the tests for that" | skip |
+| Detour: "btw what port does nginx use?" | skip (single question) |
+| Pivot: "ok let's switch to the billing bug" | `/rename billing bug` |
