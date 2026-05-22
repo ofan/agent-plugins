@@ -64,10 +64,11 @@ for b in d.get('balance_infos',[]):
     fi
 fi
 
-# ── Display ──
-parts=""
-[ -n "$session" ] && [ "$session" != "0.00" ] && parts="s\$$session"
-[ -n "$monthly" ] && [ "$monthly" != "0.00" ] && parts="$parts m\$$monthly"
-[ -z "$parts" ] && [ -n "$balance" ] && parts="\$$balance"
+# ── Display: $session/$month ($balance) — session & month spend, balance remaining ──
+cost_parts=""
+[ -n "$session" ] && [ "$session" != "0.00" ] && cost_parts="\$$session"
+[ -n "$monthly" ] && [ "$monthly" != "0.00" ] && cost_parts="$cost_parts/\$$monthly"
+[ -n "$balance" ] && [ "$balance" != "?" ] && cost_parts="$cost_parts (\$$balance)"
+cost_parts="${cost_parts# }"
 
-echo "{\"ts\":$(date +%s),\"display\":\"$parts\",\"label\":\"ds\"}" > "$CACHE"
+echo "{\"ts\":$(date +%s),\"display\":\"$cost_parts\",\"label\":\"ds\"}" > "$CACHE"

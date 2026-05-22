@@ -26,37 +26,35 @@ GLYPH_BUSY='#[fg=brightyellow#,bold]#{?@spinner_glyph,#{@spinner_glyph},✳}'
 GLYPH_IDLE='#[fg=colour244#,bold]✻'
 GLYPH_BLOCK="#{?#{==:#{@claude_busy},1},${GLYPH_BUSY},${GLYPH_IDLE}}"
 
-# Detect "pane_title starts with one of our known glyphs" — claude-set spinner
-# glyphs (✻ ✳ ✶ ✷ ✺ ✸ ✦), the pi/codex passthrough glyph (⠿), or any braille
-# in U+2801..U+28FF. #{=1:VAR} truncates to one display column (UTF-8 aware).
-HAS_GLYPH='#{m:[⠁-⣿✻✳✶✷✺✸✦⠿]*,#{=1:#{pane_title}}}'
-
 # pane_title with leading "<glyph-or-word> " prefix stripped (BRE: any
-# non-space sequence followed by space). Only used inside the HAS_GLYPH
-# branch, so we never chop off legitimate first words like "Some Title".
+# non-space sequence followed by space). Only used for Claude panes that don't
+# have @headline set yet — Claude writes "✳ ..." into pane_title.
 TITLE_TEXT='#{s/^[^ ][^ ]* //:#{pane_title}}'
 
-# Whether this pane is a Claude pane (@claude_busy is 0 or 1). Used to opt
-# Pi/Codex/plain shells out of styled rendering — they get pane_title only.
+# Whether this pane is a Claude pane (@claude_busy is 0 or 1).
 CLAUDE_PANE='#{||:#{==:#{@claude_busy},1},#{==:#{@claude_busy},0}}'
 
-# Two variants: inactive tab restores fg via #[default], active tab restores
-# to colour15 (the active-tab fg).
-HEADLINE_INACTIVE="#{?${CLAUDE_PANE},#{?${HAS_GLYPH},${GLYPH_BLOCK}#[default] ${TITLE_TEXT},#{pane_title}},#{pane_title}}"
-HEADLINE_ACTIVE="#{?${CLAUDE_PANE},#{?${HAS_GLYPH},${GLYPH_BLOCK}#[fg=colour15] ${TITLE_TEXT},#{pane_title}},#{pane_title}}"
+# Whether this pane is a non-Claude agent (Pi, Codex). Used for fallback
+# rendering when @headline isn't set — these agents manage pane_title themselves.
+# Uses pane_current_command (no fnmatch bracket expressions, no byte-range bugs).
+AGENT_PANE='#{||:#{||:#{==:#{pane_current_command},pi},#{==:#{pane_current_command},codex}},#{==:#{pane_current_command},node}}'
+
+# Two variants: @headline first, then Claude pane fallback (glyph + stripped
+# title), then other agent passthrough (pane_title as-is), then window name.
+HEADLINE_INACTIVE="#{?#{@headline},${GLYPH_BLOCK}#[default] #{=24:#{@headline}}#[default],#{?${CLAUDE_PANE},${GLYPH_BLOCK}#[default] ${TITLE_TEXT}#[default],#{?${AGENT_PANE},#{pane_title},#W}}}"
+HEADLINE_ACTIVE="#{?#{@headline},${GLYPH_BLOCK}#[fg=colour15] #{=24:#{@headline}}#[default],#{?${CLAUDE_PANE},${GLYPH_BLOCK}#[fg=colour15] ${TITLE_TEXT}#[default],#{?${AGENT_PANE},#{pane_title},#W}}}"
 
 # Recognize formats produced by any prior version of this plugin so re-running
 # `headline.tmux` (e.g. on upgrade) reliably swaps in the current version.
 # Patterns:
 #   1. v1.2.x and earlier: #(headline-render.sh ...) shell calls.
-#   2. v1.3.x intermediate / current fork-free: the HAS_GLYPH match expression
-#      uses the unique class [⠁-⣿✻✳✶✷✺✸✦⠿] which is specific to this plugin.
-# Re-applying the same format is harmless (idempotent), so a slightly broad
-# match here is fine; the goal is to never get stuck on an old version.
+#   2. v1.3.x glyph-based: uses fnmatch bracket [⠁-⣿✻✳✶✷✺✸✦⠿] for HAS_GLYPH.
+#   3. v1.5.x @headline-based: uses @headline option for agent-driven titles.
 is_legacy() {
   case "$1" in
     *headline-render.sh*)        return 0 ;;
     *'[⠁-⣿✻✳✶✷✺✸✦⠿]'*)           return 0 ;;
+    *@headline*)                 return 0 ;;
     *)                           return 1 ;;
   esac
 }
