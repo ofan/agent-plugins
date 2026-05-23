@@ -64,6 +64,19 @@ for b in d.get('balance_infos',[]):
     fi
 fi
 
+# ── Backend label ──
+# Check proxy status for active backend (deepseek vs anthropic)
+backend="??"
+if curl -sS --max-time 1 "http://127.0.0.1:3200/_proxy/status" >/dev/null 2>&1; then
+    mode=$(curl -sS --max-time 1 "http://127.0.0.1:3200/_proxy/status" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('mode','??'))" 2>/dev/null || echo "??")
+    case "$mode" in
+        deepseek) backend="ds" ;;
+        anthropic) backend="an" ;;
+        openrouter) backend="or" ;;
+        *) backend="$mode" ;;
+    esac
+fi
+
 # ── Display: $session/$month ($balance) — session & month spend, balance remaining ──
 cost_parts=""
 [ -n "$session" ] && [ "$session" != "0.00" ] && cost_parts="\$$session"
@@ -71,4 +84,9 @@ cost_parts=""
 [ -n "$balance" ] && [ "$balance" != "?" ] && cost_parts="$cost_parts (\$$balance)"
 cost_parts="${cost_parts# }"
 
-echo "{\"ts\":$(date +%s),\"display\":\"$cost_parts\",\"label\":\"ds\"}" > "$CACHE"
+json="{\"ts\":$(date +%s),\"display\":\"$cost_parts\",\"label\":\"$backend\"}"
+echo "$json" > "$CACHE"
+# Also write per-session cache so different tmux windows get correct backend label
+if [ -n "${DEEPCLAUDE_SESSION_ID:-}" ]; then
+    echo "$json" > "$HOME/.cache/tmux-headline/cost-${DEEPCLAUDE_SESSION_ID:0:8}.json"
+fi

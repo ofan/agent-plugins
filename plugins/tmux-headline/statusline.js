@@ -151,15 +151,16 @@ function costDisplay() {
     for (const cand of files) {
       try { if (fs.existsSync(cand)) { f = cand; break; } } catch {}
     }
-    if (!f) return '';
+    if (!f) return {};
     const data = JSON.parse(fs.readFileSync(f, 'utf8'));
     const age = Date.now() / 1000 - data.ts;
-    if (age > 300) return '';
-    const label = data.label === 'ds' ? `${Y}ds${R}` : data.label === 'an' ? `${G}an${R}` : '';
+    if (age > 300) return {};
+    const rawLabel = data.label || '';
+    const label = rawLabel === 'ds' ? `${Y}ds${R}` : rawLabel === 'an' ? `${G}an${R}` : '';
     const display = data.display || (data.cost != null ? `$${data.cost}` : '');
-    if (!display) return '';
-    return `${label} ${G}${display}${R}`;
-  } catch { return ''; }
+    if (!display) return {};
+    return { text: `${label} ${G}${display}${R}`, isDeepSeek: rawLabel === 'ds' };
+  } catch { return {}; }
 }
 
 function main() {
@@ -181,16 +182,18 @@ function main() {
   const curTok = totalTokens({ total_input_tokens: ctxUsed, total_output_tokens: 0 });
   const git = gitStatus(j.cwd || process.cwd());
 
-  const cost = costDisplay();
-  const isProxy = process.env.DEEPCLAUDE_SESSION_ID || cost.includes('ds');
-  const plan = isProxy ? '' : planUsage();
-  const extra = isProxy ? '' : extraUsage();
+  const costInfo = costDisplay();
+  // Only hide plan/extra for DeepSeek (no usage limits concept).
+  // Anthropic and OpenRouter backends still have rate/cost limits.
+  const isDeepSeek = costInfo.isDeepSeek || false;
+  const plan = isDeepSeek ? '' : planUsage();
+  const extra = isDeepSeek ? '' : extraUsage();
 
   const parts = [
     `${FG}${cwd}${R} ${git}`,
     `${DIM}${model}(${csz})${R}`,
     `${DIM}ctx ${R}${pc(100 - remaining)}${curTok}/${csz}${R}`,
-    cost,
+    costInfo.text,
     plan,
     extra,
     `${DIM}${u}@${h}${R}`,
