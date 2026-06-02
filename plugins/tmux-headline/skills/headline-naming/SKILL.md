@@ -1,6 +1,6 @@
 ---
 name: headline-naming
-description: Auto-call /rename when the workstream changes. Session start, topic shifts, after recaps. Use judgment for scope.
+description: Set the tmux tab headline to 2-4 lowercase words naming the current workstream goal. You MUST invoke this at session start before any other action, and whenever the workstream genuinely changes to a different feature, bug, or system. Skip for sub-tasks, follow-ups, and single-question detours within the same scope.
 ---
 
 # Track the workstream

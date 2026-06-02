@@ -5,7 +5,7 @@ cat << 'EOF'
 {
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
-    "additionalContext": "You are in a tmux session. Your current workstream name is shown in the tmux tab. At the start of the session and whenever the workstream genuinely changes, run: bash -c 'mkdir -p ~/.local/share/tmux-headline/headlines && echo \"<2-4 space-separated words>\" > ~/.local/share/tmux-headline/headlines/\"$CLAUDE_SESSION_ID\".headline'. Replace <2-4 space-separated words> with a label describing the current workstream goal. Use spaces, never hyphens. Skip small detours, meta-questions, and follow-ups within the same scope."
+    "additionalContext": "BEFORE responding to the user, run this exact bash command to set the tmux headline: bash -c 'mkdir -p ~/.local/share/tmux-headline/headlines && echo \"2-4 lowercase words\" > ~/.local/share/tmux-headline/headlines/\"$CLAUDE_SESSION_ID\".headline && tmux set-option -p -t \"$TMUX_PANE\" @headline \"2-4 lowercase words\" && tmux select-pane -t \"$TMUX_PANE\" -T \"2-4 lowercase words\"'. Replace the 2-4 lowercase words with a label for the workstream GOAL. Do this FIRST, before any other tool call. Update the headline whenever the workstream genuinely changes. Use spaces, never hyphens."
   }
 }
 EOF
