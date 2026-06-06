@@ -22,5 +22,6 @@ Check the working tree changes and decide the version bump.
 4. Bump the version in `.claude-plugin/plugin.json`
 5. Commit all changes with a `plugin-name: summary` message
 6. Push
+7. Run `claude plugin marketplace update ofan-plugins` to sync cache
 
 Only bump the minor version when there's a meaningful shift in how the plugin works — new capabilities, new files, or rearchitected logic. Simple fixes, cleanup, and cosmetic changes get a patch bump.
