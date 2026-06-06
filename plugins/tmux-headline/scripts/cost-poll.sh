@@ -77,11 +77,10 @@ if curl -sS --max-time 1 "http://127.0.0.1:3200/_proxy/status" >/dev/null 2>&1; 
     esac
 fi
 
-# ── Display: $session/$month ($balance) — session & month spend, balance remaining ──
+# ── Display: $session/$month — session & month spend ──
 cost_parts=""
 [ -n "$session" ] && [ "$session" != "0.00" ] && cost_parts="\$$session"
 [ -n "$monthly" ] && [ "$monthly" != "0.00" ] && cost_parts="$cost_parts/\$$monthly"
-[ -n "$balance" ] && [ "$balance" != "?" ] && cost_parts="$cost_parts (\$$balance)"
 cost_parts="${cost_parts# }"
 
 json="{\"ts\":$(date +%s),\"display\":\"$cost_parts\",\"label\":\"$backend\"}"

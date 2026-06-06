@@ -183,9 +183,9 @@ function main() {
   const git = gitStatus(j.cwd || process.cwd());
 
   const costInfo = costDisplay();
-  // Only hide plan/extra for DeepSeek (no usage limits concept).
-  // Anthropic and OpenRouter backends still have rate/cost limits.
   const isDeepSeek = costInfo.isDeepSeek || false;
+  // DeepSeek: show cost (tracked via proxy). Anthropic/OpenRouter: show plan limits.
+  const cost = isDeepSeek ? costInfo.text : '';
   const plan = isDeepSeek ? '' : planUsage();
   const extra = isDeepSeek ? '' : extraUsage();
 
@@ -193,7 +193,7 @@ function main() {
     `${FG}${cwd}${R} ${git}`,
     `${DIM}${model}(${csz})${R}`,
     `${DIM}ctx ${R}${pc(100 - remaining)}${curTok}/${csz}${R}`,
-    costInfo.text,
+    cost,
     plan,
     extra,
     `${DIM}${u}@${h}${R}`,
