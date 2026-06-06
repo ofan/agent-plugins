@@ -57,10 +57,28 @@ for b in d.get('balance_infos',[]):
         else
             sed -i "$ s/.*/$today $balance/" "$BALANCE_LOG" 2>/dev/null || true
         fi
-        month_start=$(head -1 "$BALANCE_LOG" 2>/dev/null | cut -d' ' -f2 || echo "")
-        if [ -n "$month_start" ] && [ "$month_start" != "$balance" ]; then
-            monthly=$(python3 -c "print(f'{float($month_start)-float($balance):.2f}')" 2>/dev/null || echo "")
-        fi
+        # Monthly spend = sum of day-over-day decreases in current calendar month
+        monthly=$(python3 -c "
+from datetime import datetime
+now = datetime.now()
+vals = []
+with open('$BALANCE_LOG') as f:
+    for line in f:
+        parts = line.strip().split()
+        if len(parts) < 2: continue
+        try:
+            d = datetime.strptime(parts[0], '%Y-%m-%d')
+            v = float(parts[1])
+        except: continue
+        if d.month == now.month and d.year == now.year:
+            vals.append(v)
+spend = 0.0
+for i in range(1, len(vals)):
+    delta = vals[i-1] - vals[i]
+    if delta > 0:
+        spend += delta
+print(f'{spend:.2f}')
+" 2>/dev/null || echo "")
     fi
 fi
 
@@ -77,15 +95,34 @@ if curl -sS --max-time 1 "http://127.0.0.1:3200/_proxy/status" >/dev/null 2>&1; 
     esac
 fi
 
-# ── Display: $session/$month — session & month spend ──
+# ── Display: "Jun $4.87 Bal $120.74" ──
+# Use printf with octal escapes so JSON stores real ANSI bytes
+DIM=$(printf '\033[2m')
+G=$(printf '\033[2;32m')
+Y=$(printf '\033[2;33m')
+R=$(printf '\033[0m')
+month_label=$(date +%b)
 cost_parts=""
-[ -n "$session" ] && [ "$session" != "0.00" ] && cost_parts="\$$session"
-[ -n "$monthly" ] && [ "$monthly" != "0.00" ] && cost_parts="$cost_parts/\$$monthly"
-cost_parts="${cost_parts# }"
-
-json="{\"ts\":$(date +%s),\"display\":\"$cost_parts\",\"label\":\"$backend\"}"
-echo "$json" > "$CACHE"
-# Also write per-session cache so different tmux windows get correct backend label
-if [ -n "${DEEPCLAUDE_SESSION_ID:-}" ]; then
-    echo "$json" > "$HOME/.cache/tmux-headline/cost-${DEEPCLAUDE_SESSION_ID:0:8}.json"
+if [ -n "$monthly" ] && [ -n "$balance" ] && [ "$balance" != "?" ]; then
+    cost_parts="${DIM}${month_label} ${Y}\$${monthly} ${R}${DIM}Bal ${G}\$${balance}${R}"
+elif [ -n "$monthly" ]; then
+    cost_parts="${DIM}${month_label} ${Y}\$${monthly}${R}"
+elif [ -n "$balance" ] && [ "$balance" != "?" ]; then
+    cost_parts="${DIM}Bal ${G}\$${balance}${R}"
 fi
+
+# Use Python for proper JSON encoding (handles ANSI escape bytes)
+export COST_DISPLAY="$cost_parts" COST_BACKEND="$backend"
+python3 -c "
+import json, os
+ts = $(date +%s)
+display = os.environ.get('COST_DISPLAY', '')
+label = os.environ.get('COST_BACKEND', '??')
+data = json.dumps({'ts': ts, 'display': display, 'label': label})
+with open('$CACHE', 'w') as f:
+    f.write(data)
+if '${DEEPCLAUDE_SESSION_ID:-}':
+    sf = '$HOME/.cache/tmux-headline/cost-${DEEPCLAUDE_SESSION_ID:0:8}.json'
+    with open(sf, 'w') as f:
+        f.write(data)
+"

@@ -147,19 +147,17 @@ function costDisplay() {
     const sid = process.env.DEEPCLAUDE_SESSION_ID || '';
     const base = os.homedir() + '/.cache/tmux-headline/cost';
     const files = [base + '-' + sid.slice(0,8) + '.json', base + '.json'];
-    let f = '';
-    for (const cand of files) {
-      try { if (fs.existsSync(cand)) { f = cand; break; } } catch {}
+    for (const f of files) {
+      try { if (!fs.existsSync(f)) continue; } catch { continue; }
+      const data = JSON.parse(fs.readFileSync(f, 'utf8'));
+      const age = Date.now() / 1000 - data.ts;
+      if (age > 300) continue;
+      const rawLabel = data.label || '';
+      const display = data.display || (data.cost != null ? `$${data.cost}` : '');
+      if (!display) continue;
+      return { text: display, rawLabel, isDeepSeek: rawLabel === 'ds' };
     }
-    if (!f) return {};
-    const data = JSON.parse(fs.readFileSync(f, 'utf8'));
-    const age = Date.now() / 1000 - data.ts;
-    if (age > 300) return {};
-    const rawLabel = data.label || '';
-    const label = rawLabel === 'ds' ? `${Y}ds${R}` : rawLabel === 'an' ? `${G}an${R}` : '';
-    const display = data.display || (data.cost != null ? `$${data.cost}` : '');
-    if (!display) return {};
-    return { text: `${label} ${G}${display}${R}`, isDeepSeek: rawLabel === 'ds' };
+    return {};
   } catch { return {}; }
 }
 
@@ -183,7 +181,8 @@ function main() {
   const git = gitStatus(j.cwd || process.cwd());
 
   const costInfo = costDisplay();
-  const isDeepSeek = costInfo.isDeepSeek || false;
+  const modelId = (j.model?.display_name || j.model?.id || '');
+  const isDeepSeek = costInfo.isDeepSeek || /deepseek/i.test(modelId);
   // DeepSeek: show cost (tracked via proxy). Anthropic/OpenRouter: show plan limits.
   const cost = isDeepSeek ? costInfo.text : '';
   const plan = isDeepSeek ? '' : planUsage();
