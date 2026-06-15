@@ -2,7 +2,9 @@
 // Claude Code statusline
 const os = require('os');
 const fs = require('fs');
+const path = require('path');
 const { execFileSync } = require('child_process');
+const scriptDir = __dirname;
 
 const R = '\x1b[0m', DIM = '\x1b[2m';
 const G = '\x1b[2;32m', Y = '\x1b[2;33m', RE = '\x1b[2;31m';
@@ -147,17 +149,34 @@ function costDisplay() {
     const sid = process.env.DEEPCLAUDE_SESSION_ID || '';
     const base = os.homedir() + '/.cache/tmux-headline/cost';
     const files = [base + '-' + sid.slice(0,8) + '.json', base + '.json'];
-    for (const f of files) {
-      try { if (!fs.existsSync(f)) continue; } catch { continue; }
-      const data = JSON.parse(fs.readFileSync(f, 'utf8'));
-      const age = Date.now() / 1000 - data.ts;
-      if (age > 300) continue;
-      const rawLabel = data.label || '';
-      const display = data.display || (data.cost != null ? `$${data.cost}` : '');
-      if (!display) continue;
-      return { text: display, rawLabel, isDeepSeek: rawLabel === 'ds' };
+    let f = '';
+    for (const cand of files) {
+      try { if (fs.existsSync(cand)) { f = cand; break; } } catch {}
     }
-    return {};
+    // Auto-poll if missing or stale (> 60s). cost-poll.sh throttles to 30s internally.
+    const pollScript = path.join(scriptDir, 'scripts', 'cost-poll.sh');
+    if (fs.existsSync(pollScript)) {
+      let preData;
+      try { preData = f ? JSON.parse(fs.readFileSync(f, 'utf8')) : null; } catch { preData = null; }
+      if (!preData || Date.now() / 1000 - preData.ts > 60) {
+        try { execFileSync('bash', [pollScript], { timeout: 10000, stdio: 'ignore' }); } catch {}
+        // Re-resolve file after poll (may have been created by the poll)
+        if (!f) {
+          for (const cand of files) {
+            try { if (fs.existsSync(cand)) { f = cand; break; } } catch {}
+          }
+        }
+      }
+    }
+    if (!f) return {};
+    const data = JSON.parse(fs.readFileSync(f, 'utf8'));
+    const age = Date.now() / 1000 - data.ts;
+    if (age > 300) return {};
+    const rawLabel = data.label || '';
+    const label = rawLabel === 'ds' ? `${Y}ds${R}` : rawLabel === 'an' ? `${G}an${R}` : '';
+    const display = data.display || (data.cost != null ? `$${data.cost}` : '');
+    if (!display) return {};
+    return { text: `${label} ${G}${display}${R}`, isDeepSeek: rawLabel === 'ds' };
   } catch { return {}; }
 }
 
@@ -181,10 +200,9 @@ function main() {
   const git = gitStatus(j.cwd || process.cwd());
 
   const costInfo = costDisplay();
-  const modelId = (j.model?.display_name || j.model?.id || '');
-  const isDeepSeek = costInfo.isDeepSeek || /deepseek/i.test(modelId);
-  // DeepSeek: show cost (tracked via proxy). Anthropic/OpenRouter: show plan limits.
-  const cost = isDeepSeek ? costInfo.text : '';
+  // Only hide plan/extra for DeepSeek (no usage limits concept).
+  // Anthropic and OpenRouter backends still have rate/cost limits.
+  const isDeepSeek = costInfo.isDeepSeek || false;
   const plan = isDeepSeek ? '' : planUsage();
   const extra = isDeepSeek ? '' : extraUsage();
 
@@ -192,7 +210,7 @@ function main() {
     `${FG}${cwd}${R} ${git}`,
     `${DIM}${model}(${csz})${R}`,
     `${DIM}ctx ${R}${pc(100 - remaining)}${curTok}/${csz}${R}`,
-    cost,
+    costInfo.text,
     plan,
     extra,
     `${DIM}${u}@${h}${R}`,

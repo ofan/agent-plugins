@@ -15,6 +15,7 @@ chmod +x "$INSTALL_ROOT/deepclaude"
 
 # Proxy (Node.js)
 cp "$PLUGIN_DIR/proxy/"*.js "$INSTALL_ROOT/proxy/"
+cp "$PLUGIN_DIR/proxy/package.json" "$INSTALL_ROOT/proxy/"
 
 # Windows launcher
 cp "$PLUGIN_DIR/deepclaude.ps1" "$INSTALL_ROOT/deepclaude.ps1"

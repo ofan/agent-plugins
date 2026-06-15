@@ -18,9 +18,9 @@ import { fileURLToPath } from "node:url";
 const HOME = process.env.HOME || "~";
 const DATA_DIR = join(HOME, ".local", "share", "tmux-headline");
 const HEADLINE_DIR = join(DATA_DIR, "headlines");
-const BRAILLE = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const SPIN_MS = 100;
-const IDLE_GLYPH = "⠿";
+const PI_SPIN = ["π", "Π", "∏", "ϖ"];  // pi symbols
+const SPIN_MS = 150;
+const IDLE_GLYPH = "π";
 
 // ── helpers ───────────────────────────────────────────────────
 
@@ -147,11 +147,11 @@ export default function (pi: ExtensionAPI) {
   function startSpinner(): void {
     stopSpinner();
     spinnerFrame = 0;
-    updateTitle(BRAILLE[0]);
+    updateTitle(PI_SPIN[0]);
     spinnerTimer = setInterval(() => {
       if (shuttingDown) return stopSpinner();
       spinnerFrame++;
-      updateTitle(BRAILLE[spinnerFrame % BRAILLE.length]);
+      updateTitle(PI_SPIN[spinnerFrame % PI_SPIN.length]);
     }, SPIN_MS);
   }
 
