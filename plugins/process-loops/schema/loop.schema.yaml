@@ -1,0 +1,41 @@
+# Process Loop Schema v0.1
+# All loops must conform to this structure.
+
+required:
+  - name        # string — unique identifier (kebab-case)
+  - description # string — human-readable purpose
+  - steps       # array — ordered list of steps
+
+optional:
+  - trigger     # string — when to suggest this loop
+
+step_required:
+  - name        # string — step identifier (kebab-case)
+
+step_optional:
+  # Execution (pick one):
+  - run         # string — shell command to execute
+  - action      # string — description of work for Claude to perform
+  - loop        # string — name of another loop to run (nested)
+  - loop-poll   # string — interval for recurring check (e.g., "2m")
+
+  # Verification:
+  - expect      # string — regex pattern output must match (for `run:`)
+  - verify      # string — command to run after `action:` completes
+  - checklist   # array of strings — items to verify
+
+  # Metadata:
+  - fail        # string — error message shown on failure
+  - note        # string — guidance for Claude (not executed)
+  - env         # string — shell command to set env vars before `run:`
+  - duration    # string — how long to poll (for `loop-poll:`)
+
+# Validation rules:
+# - Every step must have at least one of: run, action, loop, loop-poll
+# - `expect` only valid with `run`
+# - `verify` only valid with `action`
+# - `checklist` only valid with `action`
+# - `duration` only valid with `loop-poll`
+# - `env` only valid with `run`
+# - step names must be unique within a loop
+# - nested `loop:` references must exist in discovery paths

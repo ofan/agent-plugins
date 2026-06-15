@@ -1,0 +1,47 @@
+name: add-backend
+description: Add a new LLM backend to the proxy
+trigger: "when adding a new backend provider"
+steps:
+  - name: research
+    action: "Fetch llms.txt, API docs, pricing, rate limits"
+    checklist:
+      - "Base URL and endpoint paths"
+      - "Auth type and header format"
+      - "Model names and context windows"
+      - "OpenAI/Anthropic compatibility"
+      - "Rate limits and pricing"
+      - "Special features (reasoning, tools)"
+
+  - name: visualize
+    action: "Create HTML visualization of the plan for review"
+    note: "Serve locally, get user approval before proceeding"
+
+  - name: snapshot-config
+    run: "curl -s http://proxy.lab.tf/_/config > /tmp/current-config.json"
+    note: "NEVER construct config from scratch"
+
+  - name: edit-config
+    action: "Append new backend entry to the snapshot"
+    note: "Preserve existing backends and hash"
+
+  - name: validate
+    action: "4-layer validation"
+    checklist:
+      - "Schema check: npx tsx src/index.ts --check"
+      - "Unit test: curl the backend directly"
+      - "Proxy test: curl through local proxy"
+      - "SSE stream test: verify streaming works"
+
+  - name: push-config
+    run: "curl -X PUT http://proxy.lab.tf/_/config -H 'Content-Type: application/json' -d @/tmp/new-config.json"
+    note: "Retry on 409 (hash mismatch)"
+
+  - name: verify-routing
+    run: "curl -s http://proxy.lab.tf/v1/models | python3 -c 'import sys,json; print(len(json.load(sys.stdin)[\"data\"]))'"
+
+  - name: verify-health
+    run: "curl -s http://proxy.lab.tf/healthz | python3 -c 'import sys,json; [print(f\"{b[\"name\"]}: {\"up\" if b[\"healthy\"] else \"DOWN\"}\") for b in json.load(sys.stdin)[\"backends\"]]'"
+
+  - name: smoke-test
+    action: "Send a real prompt through the new backend via Claude Code"
+    verify: "Check /_/log for successful request to new backend"

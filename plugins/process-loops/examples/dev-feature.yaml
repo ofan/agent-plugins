@@ -1,0 +1,30 @@
+name: dev-feature
+description: TDD workflow for implementing a new proxy feature
+trigger: "when adding a new feature to the proxy"
+steps:
+  - name: write-tests
+    action: "Write tests in test/ that define the expected interface"
+    verify: "npx tsx test/<test-file>.ts"
+    note: "Tests should FAIL initially (TDD red phase)"
+
+  - name: implement
+    action: "Implement in src/middleware/ — all logic in MW, not index.ts"
+    verify: "npx tsx test/<test-file>.ts"
+    expect: "passed"
+
+  - name: local-test
+    action: "Start proxy locally with prod config, test with curl"
+    run: "PROXY_CONFIG=/tmp/prod-config.json npx tsx src/index.ts"
+    verify: "curl -s http://localhost:8890/version"
+
+  - name: curl-verify
+    action: "Send a real request via curl to verify the feature works"
+    note: "Use anthropic-version header, proper tool format, stream=true"
+
+  - name: deploy
+    action: "Run the deploy loop"
+    loop: deploy
+
+  - name: e2e-verify
+    action: "Verify with actual Claude Code session"
+    verify: "curl -s http://proxy.lab.tf/_/log | check recent entries"

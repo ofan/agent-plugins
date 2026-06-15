@@ -1,0 +1,34 @@
+name: deploy
+description: Build, push, and deploy a new version to production
+trigger: "when deploying code changes to production"
+steps:
+  - name: test
+    run: "npx tsx test/test-search-loop.ts"
+    expect: "passed"
+    fail: "fix tests before deploying"
+
+  - name: bump
+    run: "npm version patch --no-git-tag-version"
+    note: "patch only — minor/major require explicit approval"
+
+  - name: build
+    run: "docker build -t harbor.lab.tf/library/llm-proxy:$VER ."
+    env: "VER=$(node -e \"console.log(require('./package.json').version)\")"
+
+  - name: push-version
+    run: "docker push harbor.lab.tf/library/llm-proxy:$VER"
+
+  - name: push-test
+    run: "docker tag harbor.lab.tf/library/llm-proxy:$VER harbor.lab.tf/library/llm-proxy:test && docker push harbor.lab.tf/library/llm-proxy:test"
+    note: "StatefulSet uses :test tag — must push this too"
+
+  - name: rollout
+    run: "kubectl -n app rollout restart statefulset/llm-proxy"
+
+  - name: wait
+    run: "kubectl -n app rollout status statefulset/llm-proxy --timeout=90s"
+
+  - name: verify
+    run: "sleep 5 && curl -s http://proxy.lab.tf/version"
+    expect: "version.*$VER"
+    fail: "version mismatch — check pod image with kubectl get statefulset -o jsonpath"
