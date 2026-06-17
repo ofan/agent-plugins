@@ -1,8 +1,53 @@
 #!/usr/bin/env bash
 # deepclaude — Claude Code via DeepSeek/OpenRouter proxy
-# Usage: deepclaude [--backend ds|or|anthropic] [--status|--cost|--benchmark|--switch <b>|--help] [-- <claude-args>]
+# Usage: deepclaude [--backend ds|or|cx|deepseek|minimax|anthropic] [--status|--cost|--benchmark|--switch <b>|--help] [-- <claude-args>]
 
 set -eu
+
+# --- Auto-detect backend models from proxy /_/presets ---
+#
+# Fetches GET <proxy>/_/presets ONCE, parses the (backend, tier) → model
+# map, then locally resolves each tier by the client-side table:
+#
+#   t1 -> OPUS_MODEL
+#   t2 -> SONNET_MODEL
+#   t3 -> HAIKU_MODEL
+#   t4 -> SUBAGENT_MODEL
+#
+# The proxy uses abstract tier labels (t1, t2, ...). The mapping from
+# tier label to deepclaude slot is hardcoded here. Other clients (Pi,
+# Codex) have their own tables. The deepclaude case name == the proxy
+# backend name (e.g. `deepseek`, `minimax`) — no mapping function.
+
+# Map abstract tier label -> deepclaude slot name.
+_deepclaude_tier_to_slot() {
+    case "$1" in
+        t1) echo OPUS_MODEL ;;
+        t2) echo SONNET_MODEL ;;
+        t3) echo HAIKU_MODEL ;;
+        t4) echo SUBAGENT_MODEL ;;
+        *)  return 1 ;;
+    esac
+}
+
+# Fetch /_/presets and emit lines of "<tier>=<model>" on stdout for
+# the target backend. Returns non-zero (and empty stdout) on any failure.
+_deepclaude_fetch_presets() {
+    local url="$1/_/presets"
+    local raw
+    raw=$(curl --max-time 3 -fsS "$url" 2>/dev/null) || return 1
+    python3 -c '
+import sys, json
+try:
+    data = json.loads(sys.stdin.read())
+    target_backend = sys.argv[1]
+    presets = data.get("presets", {}).get(target_backend, {})
+    for tier, model in presets.items():
+        print(tier + "=" + model)
+except Exception:
+    sys.exit(1)
+' "$2" <<<"$raw"
+}
 
 SOURCE="${BASH_SOURCE[0]:-$0}"
 while [ -L "$SOURCE" ]; do
@@ -46,7 +91,7 @@ clean_path() {
 
 resolve_backend() {
     case "$BACKEND" in
-        deepseek)
+        ds)
             [ -n "${DEEPSEEK_API_KEY:-}" ] || { echo "deepclaude: DEEPSEEK_API_KEY is not set" >&2; exit 1; }
             TARGET_URL="https://api.deepseek.com/anthropic"
             TARGET_KEY="$DEEPSEEK_API_KEY"
@@ -72,6 +117,58 @@ resolve_backend() {
             SONNET_MODEL="gpt-5.4"
             HAIKU_MODEL="gpt-5.4"
             SUBAGENT_MODEL="gpt-5.4"
+            ;;
+        deepseek)
+            TARGET_URL="${DEEPSEEK_PROXY_URL:-https://proxy.lab.tf}"
+            TARGET_KEY="${DEEPSEEK_PROXY_API_KEY:-unused}"
+            if command -v python3 >/dev/null 2>&1; then
+                presets=$(_deepclaude_fetch_presets "$TARGET_URL" deepseek 2>/dev/null || true)
+                if [ -n "$presets" ]; then
+                    while IFS='=' read -r tier model; do
+                        slot=$(_deepclaude_tier_to_slot "$tier" 2>/dev/null || true)
+                        if [ -n "$slot" ]; then
+                            current="${!slot:-}"
+                            if [ -z "$current" ]; then
+                                eval "$slot=\$model"
+                            fi
+                        fi
+                    done <<<"$presets"
+                else
+                    echo "[deepclaude] could not reach $TARGET_URL/_/presets, using hardcoded defaults" >&2
+                fi
+            else
+                echo "[deepclaude] python3 not found, using hardcoded defaults" >&2
+            fi
+            OPUS_MODEL="${DEEPSEEK_OPUS_MODEL:-${OPUS_MODEL:-deepseek-v4-pro}}"
+            SONNET_MODEL="${DEEPSEEK_SONNET_MODEL:-${SONNET_MODEL:-deepseek-v4-pro}}"
+            HAIKU_MODEL="${DEEPSEEK_HAIKU_MODEL:-${HAIKU_MODEL:-deepseek-v4-flash}}"
+            SUBAGENT_MODEL="${DEEPSEEK_SUBAGENT_MODEL:-${SUBAGENT_MODEL:-deepseek-v4-flash}}"
+            ;;
+        minimax)
+            TARGET_URL="${MINIMAX_PROXY_URL:-https://proxy.lab.tf}"
+            TARGET_KEY="${MINIMAX_PROXY_API_KEY:-unused}"
+            if command -v python3 >/dev/null 2>&1; then
+                presets=$(_deepclaude_fetch_presets "$TARGET_URL" minimax 2>/dev/null || true)
+                if [ -n "$presets" ]; then
+                    while IFS='=' read -r tier model; do
+                        slot=$(_deepclaude_tier_to_slot "$tier" 2>/dev/null || true)
+                        if [ -n "$slot" ]; then
+                            current="${!slot:-}"
+                            if [ -z "$current" ]; then
+                                eval "$slot=\$model"
+                            fi
+                        fi
+                    done <<<"$presets"
+                else
+                    echo "[deepclaude] could not reach $TARGET_URL/_/presets, using hardcoded defaults" >&2
+                fi
+            else
+                echo "[deepclaude] python3 not found, using hardcoded defaults" >&2
+            fi
+            OPUS_MODEL="${MINIMAX_OPUS_MODEL:-${OPUS_MODEL:-MiniMax-M3}}"
+            SONNET_MODEL="${MINIMAX_SONNET_MODEL:-${SONNET_MODEL:-MiniMax-M3}}"
+            HAIKU_MODEL="${MINIMAX_HAIKU_MODEL:-${HAIKU_MODEL:-MiniMax-M2.7}}"
+            SUBAGENT_MODEL="${MINIMAX_SUBAGENT_MODEL:-${SUBAGENT_MODEL:-MiniMax-M2.7}}"
             ;;
         anthropic)
             OPUS_MODEL=""
@@ -131,6 +228,8 @@ show_status() {
     echo "    deepclaude                  # DeepSeek V4 Pro (default)"
     echo "    deepclaude -b or            # OpenRouter"
     echo "    deepclaude -b cx            # OpenAI Codex (GPT-5.5/5.4)"
+    echo "    deepclaude -b deepseek      # proxy.lab.tf / DeepSeek models (no local proxy)"
+    echo "    deepclaude -b minimax       # proxy.lab.tf / MiniMax-M3 (no local proxy)"
     echo "    deepclaude -b anthropic     # Normal Claude Code"
     echo ""
     local ps
@@ -164,7 +263,19 @@ show_help() {
     echo "Usage: deepclaude [options] [-- <claude-args>]"
     echo ""
     echo "Options:"
-    echo "  -b, --backend <ds|or|cx|anthropic> Backend (default: deepseek)"
+    echo "  -b, --backend <ds|or|cx|deepseek|minimax|anthropic> Backend (default: deepseek)"
+    echo ""
+    echo "deepseek backend (proxy.lab.tf) per-tier overrides:"
+    echo "  DEEPSEEK_OPUS_MODEL       (default: deepseek-v4-pro)"
+    echo "  DEEPSEEK_SONNET_MODEL     (default: deepseek-v4-pro)"
+    echo "  DEEPSEEK_HAIKU_MODEL      (default: deepseek-v4-flash)"
+    echo "  DEEPSEEK_SUBAGENT_MODEL   (default: deepseek-v4-flash)"
+    echo ""
+    echo "minimax backend (proxy.lab.tf) per-tier overrides:"
+    echo "  MINIMAX_OPUS_MODEL        (default: MiniMax-M3)"
+    echo "  MINIMAX_SONNET_MODEL      (default: MiniMax-M3)"
+    echo "  MINIMAX_HAIKU_MODEL       (default: MiniMax-M2.7)"
+    echo "  MINIMAX_SUBAGENT_MODEL    (default: MiniMax-M2.7)"
     echo "  -s, --switch <backend>            Switch proxy mid-session"
     echo "  --status                           Show keys and proxy status"
     echo "  --cost                             Pricing comparison"
@@ -180,10 +291,12 @@ show_help() {
 do_switch() {
     local backend="$1"
     case "$backend" in
-        ds|deepseek)   backend="deepseek" ;;
+        ds)            backend="ds" ;;
         or|openrouter) backend="openrouter" ;;
         cx|codex)      backend="codex" ;;
         anthropic)     backend="anthropic" ;;
+        deepseek|minimax) echo "  $backend mode bypasses the local proxy; relaunch with: deepclaude -b $backend" >&2; exit 1 ;;
+        llm|m3)        echo "  $backend is no longer supported; use -b deepseek or -b minimax instead" >&2; exit 1 ;;
         *) echo "deepclaude: unknown backend '$backend'" >&2; exit 1 ;;
     esac
     local resp
@@ -243,11 +356,33 @@ run_benchmark() {
 launch() {
     resolve_backend
 
+    # Note: bash's && binds tighter than ||, so explicit grouping is required.
+    if [ -t 2 ] && { [ "$BACKEND" = "deepseek" ] || [ "$BACKEND" = "minimax" ]; }; then
+        echo "[deepclaude] backend=$BACKEND resolved: opus=$OPUS_MODEL sonnet=$SONNET_MODEL haiku=$HAIKU_MODEL subagent=$SUBAGENT_MODEL" >&2
+    fi
+
     if [ "$BACKEND" = "anthropic" ]; then
         echo "  Launching Claude Code (Anthropic direct)..."
         unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN
         unset ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL
         unset ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SUBAGENT_MODEL
+        CLEANED_PATH="$(clean_path "$SCRIPT_DIR")"
+        PATH="$CLEANED_PATH" exec claude "$@"
+    fi
+
+    if [ "$BACKEND" = "deepseek" ] || [ "$BACKEND" = "minimax" ]; then
+        echo "  Launching Claude Code (via proxy.lab.tf)..."
+        echo "" >&2
+        echo "  ▸ backend : $BACKEND" >&2
+        echo "  ▸ opus    : $OPUS_MODEL" >&2
+        echo "  ▸ haiku   : $HAIKU_MODEL" >&2
+        echo "" >&2
+        export ANTHROPIC_BASE_URL="$TARGET_URL"
+        export ANTHROPIC_AUTH_TOKEN="$TARGET_KEY"
+        export ANTHROPIC_DEFAULT_OPUS_MODEL="$OPUS_MODEL"
+        export ANTHROPIC_DEFAULT_SONNET_MODEL="$SONNET_MODEL"
+        export ANTHROPIC_DEFAULT_HAIKU_MODEL="$HAIKU_MODEL"
+        export CLAUDE_CODE_SUBAGENT_MODEL="$SUBAGENT_MODEL"
         CLEANED_PATH="$(clean_path "$SCRIPT_DIR")"
         PATH="$CLEANED_PATH" exec claude "$@"
     fi
@@ -366,10 +501,14 @@ while [ $# -gt 0 ]; do
             ;;
         --backend|-b)
             case "$2" in
-                ds|deepseek)   BACKEND="deepseek" ;;
+                ds)            BACKEND="ds" ;;
                 or|openrouter) BACKEND="openrouter" ;;
                 cx|codex)      BACKEND="codex" ;;
+                deepseek)      BACKEND="deepseek" ;;
+                minimax)       BACKEND="minimax" ;;
                 anthropic)     BACKEND="anthropic" ;;
+                llm)           echo "  -b llm is no longer supported; use -b deepseek instead" >&2; exit 2 ;;
+                m3)            echo "  -b m3 is no longer supported; use -b minimax instead" >&2; exit 2 ;;
                 *) echo "deepclaude: unknown backend '$2'" >&2; exit 2 ;;
             esac
             shift 2
