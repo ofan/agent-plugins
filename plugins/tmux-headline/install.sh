@@ -43,13 +43,34 @@ else
   skip "tmux formats" "no tmux server running — will apply on next start"
 fi
 
-# Add to tmux.conf if not already there
+# Stable, unversioned path — matches the TPM convention this config already
+# uses (~/.tmux/plugins/<name>/). headline.tmux + scripts/ live behind a
+# symlink here, so ~/.tmux.conf never carries a version-specific or dev-tree
+# path. The Claude Code SessionStart hook re-points this symlink to
+# $CLAUDE_PLUGIN_ROOT each session, so `claude plugin update` propagates with
+# no manual step; for Pi/Codex, re-run install.sh after an update.
+STABLE_LINK="${HOME}/.tmux/plugins/tmux-headline"
+mkdir -p "$(dirname "$STABLE_LINK")"
+ln -sfn "$PLUGIN_DIR" "$STABLE_LINK"
+ok "symlink ${STABLE_LINK/#$HOME/~} -> ${PLUGIN_DIR/#$HOME/~}"
+
+# ~/.tmux.conf: NORMALIZE to the stable line. Replace any existing
+# tmux-headline run-shell line (a stale dev-tree or versioned-cache path)
+# rather than skipping, so upgrades repair old wiring. Idempotent: the grep
+# strips every prior reference (comment + run-shell), then the canonical block
+# is appended once.
 TMUX_CONF="${HOME}/.tmux.conf"
-if [ -f "$TMUX_CONF" ] && grep -q 'headline\.tmux\|tmux-headline' "$TMUX_CONF" 2>/dev/null; then
-  ok "tmux.conf already configured"
+STABLE_LINE="run-shell ${STABLE_LINK}/headline.tmux"
+if [ -f "$TMUX_CONF" ]; then
+  cp "$TMUX_CONF" "${TMUX_CONF}.bak"
+  tmp="$(mktemp)"
+  grep -vE '^[[:space:]]*#[[:space:]]*tmux-headline: agent status in window tabs|^[[:space:]]*run(-shell)?.*headline\.tmux' "$TMUX_CONF" > "$tmp" 2>/dev/null || true
+  { cat "$tmp"; printf '\n# tmux-headline: agent status in window tabs\n%s\n' "$STABLE_LINE"; } > "$TMUX_CONF"
+  rm -f "$tmp"
+  ok "normalized ~/.tmux.conf -> stable path (backup: ~/.tmux.conf.bak)"
 else
-  printf '\n# tmux-headline: agent status in window tabs\nrun-shell %s/headline.tmux\n' "$PLUGIN_DIR" >> "$TMUX_CONF"
-  ok "added run-shell to ~/.tmux.conf"
+  printf '# tmux-headline: agent status in window tabs\n%s\n' "$STABLE_LINE" > "$TMUX_CONF"
+  ok "created ~/.tmux.conf with stable run-shell"
 fi
 
 # ── 2. Claude Code ────────────────────────────────────────────
