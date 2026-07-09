@@ -17,6 +17,12 @@
       "description": "Claude Code launcher and proxy for DeepSeek/OpenRouter/Fireworks with live backend switching",
       "version": "0.3.0",
       "source": "./plugins/deepclaude"
+    },
+    {
+      "name": "visualize",
+      "description": "Renders content as reviewable HTML pages on a local HTTP server with annotation, feedback, and server-side persistence",
+      "version": "0.1.0",
+      "source": "./plugins/visualize"
     }
   ]
 }
