@@ -1,0 +1,2515 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlas — AI Agent Report Viewer</title>
+<style>
+/* ── Tokens: modern-minimal (Linear / Vercel) ── */
+:root {
+  --bg:      oklch(99% 0.002 240);
+  --surface: oklch(100% 0 0);
+  --fg:      oklch(18% 0.012 250);
+  --muted:   oklch(54% 0.012 250);
+  --border:  oklch(92% 0.005 250);
+  --accent:  oklch(58% 0.18 255);
+  --accent-soft: oklch(95% 0.03 255);
+  --success: oklch(62% 0.16 145);
+  --success-soft: oklch(94% 0.04 145);
+  --warning: oklch(68% 0.15 80);
+  --warning-soft: oklch(95% 0.05 80);
+  --danger:  oklch(54% 0.20 20);
+  --danger-soft: oklch(95% 0.03 20);
+
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  --font-mono:    'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+
+  --nav-width: 56px;
+  --feedback-width: 360px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --letter-spacing-display: -0.02em;
+  --transition: 180ms ease;
+
+  /* Derived tokens */
+  --code-surface: oklch(22% 0.02 250);
+  --code-fg:      oklch(92% 0.005 250);
+  --hover-bg:     oklch(97% 0.003 250);
+  --drawer-reply-bg: oklch(97% 0.003 250);
+  --composer-footer-bg: oklch(98% 0.002 250);
+  --tooltip-bg:   var(--fg);
+  --tooltip-fg:   var(--surface);
+}
+
+/* ── Dark mode ── */
+[data-theme="dark"] {
+  --bg:      oklch(15% 0.012 250);
+  --surface: oklch(20% 0.015 250);
+  --fg:      oklch(92% 0.005 250);
+  --muted:   oklch(60% 0.012 250);
+  --border:  oklch(28% 0.015 250);
+  --accent:  oklch(65% 0.16 255);
+  --accent-soft: oklch(25% 0.06 255);
+  --success: oklch(65% 0.16 145);
+  --success-soft: oklch(22% 0.05 145);
+  --warning: oklch(70% 0.15 80);
+  --warning-soft: oklch(22% 0.06 80);
+  --danger:  oklch(58% 0.20 20);
+  --danger-soft: oklch(22% 0.05 20);
+
+  --code-surface: oklch(18% 0.010 250);
+  --code-fg:      oklch(90% 0.005 250);
+  --hover-bg:     oklch(24% 0.015 250);
+  --drawer-reply-bg: oklch(24% 0.015 250);
+  --composer-footer-bg: oklch(18% 0.012 250);
+  --tooltip-bg:   var(--surface);
+  --tooltip-fg:   var(--fg);
+}
+
+/* ── Font size scale ── */
+[data-font-size="small"]  .main { font-size: 1rem; }
+[data-font-size="medium"] .main { font-size: 1.125rem; }
+[data-font-size="large"]  .main { font-size: 1.25rem; }
+
+/* ── Style themes ── */
+[data-style="editorial-monocle"] {
+  --bg:      oklch(98% 0.004 95);
+  --surface: oklch(100% 0.002 95);
+  --fg:      oklch(20% 0.018 70);
+  --muted:   oklch(48% 0.012 70);
+  --border:  oklch(90% 0.006 95);
+  --accent:  oklch(52% 0.10 28);
+  --accent-soft: oklch(95% 0.04 28);
+  --font-display: 'Iowan Old Style', 'Charter', Georgia, serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+[data-style="editorial-monocle"][data-theme="dark"] {
+  --bg:      oklch(18% 0.012 70);
+  --surface: oklch(22% 0.015 70);
+  --fg:      oklch(92% 0.006 95);
+  --muted:   oklch(58% 0.012 70);
+  --border:  oklch(30% 0.015 70);
+  --accent:  oklch(58% 0.12 28);
+  --accent-soft: oklch(22% 0.05 28);
+  --success: oklch(62% 0.16 145);
+  --success-soft: oklch(22% 0.05 145);
+  --warning: oklch(68% 0.15 80);
+  --warning-soft: oklch(22% 0.06 80);
+  --danger:  oklch(54% 0.20 20);
+  --danger-soft: oklch(22% 0.05 20);
+  --code-surface: oklch(16% 0.010 70);
+  --code-fg:      oklch(90% 0.006 95);
+  --hover-bg:     oklch(26% 0.015 70);
+  --drawer-reply-bg: oklch(26% 0.015 70);
+  --composer-footer-bg: oklch(20% 0.012 70);
+}
+
+[data-style="human-approachable"] {
+  --bg:      oklch(98% 0.004 240);
+  --surface: oklch(100% 0 0);
+  --fg:      oklch(20% 0.02 240);
+  --muted:   oklch(50% 0.018 240);
+  --border:  oklch(90% 0.006 240);
+  --accent:  oklch(56% 0.12 170);
+  --accent-soft: oklch(94% 0.05 170);
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --font-display: 'Söhne', 'Avenir Next', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+}
+[data-style="human-approachable"][data-theme="dark"] {
+  --bg:      oklch(16% 0.018 240);
+  --surface: oklch(22% 0.020 240);
+  --fg:      oklch(92% 0.004 240);
+  --muted:   oklch(58% 0.018 240);
+  --border:  oklch(28% 0.020 240);
+  --accent:  oklch(62% 0.14 170);
+  --accent-soft: oklch(22% 0.06 170);
+  --success: oklch(65% 0.16 145);
+  --success-soft: oklch(22% 0.05 145);
+  --warning: oklch(70% 0.15 80);
+  --warning-soft: oklch(22% 0.06 80);
+  --danger:  oklch(58% 0.20 20);
+  --danger-soft: oklch(22% 0.05 20);
+}
+
+[data-style="tech-utility"] {
+  --bg:      oklch(98% 0.005 250);
+  --surface: oklch(100% 0 0);
+  --fg:      oklch(22% 0.02 240);
+  --muted:   oklch(50% 0.018 240);
+  --border:  oklch(90% 0.008 240);
+  --accent:  oklch(58% 0.16 145);
+  --accent-soft: oklch(94% 0.05 145);
+  --font-display: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+}
+[data-style="tech-utility"][data-theme="dark"] {
+  --bg:      oklch(15% 0.018 240);
+  --surface: oklch(20% 0.022 240);
+  --fg:      oklch(92% 0.005 250);
+  --muted:   oklch(56% 0.018 240);
+  --border:  oklch(28% 0.022 240);
+  --accent:  oklch(62% 0.18 145);
+  --accent-soft: oklch(22% 0.06 145);
+  --success: oklch(65% 0.16 145);
+  --success-soft: oklch(22% 0.05 145);
+  --warning: oklch(70% 0.15 80);
+  --warning-soft: oklch(22% 0.06 80);
+  --danger:  oklch(58% 0.20 20);
+  --danger-soft: oklch(22% 0.05 20);
+}
+
+[data-style="brutalist-experimental"] {
+  --bg:      oklch(98% 0.004 240);
+  --surface: oklch(100% 0 0);
+  --fg:      oklch(15% 0.02 100);
+  --muted:   oklch(40% 0.02 100);
+  --border:  oklch(15% 0.02 100);
+  --accent:  oklch(60% 0.22 25);
+  --accent-soft: oklch(94% 0.08 25);
+  --radius-sm: 0px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --font-display: 'Times New Roman', 'Iowan Old Style', Georgia, serif;
+  --font-body:    ui-monospace, 'IBM Plex Mono', 'JetBrains Mono', Menlo, monospace;
+}
+[data-style="brutalist-experimental"][data-theme="dark"] {
+  --bg:      oklch(12% 0.015 100);
+  --surface: oklch(18% 0.020 100);
+  --fg:      oklch(94% 0.004 240);
+  --muted:   oklch(55% 0.02 100);
+  --border:  oklch(94% 0.004 240);
+  --accent:  oklch(65% 0.24 25);
+  --accent-soft: oklch(20% 0.08 25);
+  --success: oklch(65% 0.16 145);
+  --success-soft: oklch(22% 0.05 145);
+  --warning: oklch(70% 0.15 80);
+  --warning-soft: oklch(22% 0.06 80);
+  --danger:  oklch(58% 0.20 20);
+  --danger-soft: oklch(22% 0.05 20);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+
+body {
+  font-family: var(--font-body);
+  color: var(--fg);
+  background: var(--bg);
+  line-height: 1.6;
+  display: flex;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Nav rail ── */
+.nav-rail {
+  width: var(--nav-width);
+  min-width: var(--nav-width);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0;
+  gap: 6px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  z-index: 10;
+}
+
+.nav-rail .logo {
+  width: 32px; height: 32px;
+  background: var(--fg);
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--surface);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: var(--letter-spacing-display);
+  margin-bottom: 24px;
+  flex-shrink: 0;
+}
+
+.nav-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--border);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition);
+  position: relative;
+  flex-shrink: 0;
+}
+
+.nav-dot:hover { background: var(--muted); }
+.nav-dot.active { background: var(--accent); transform: scale(1.3); }
+.nav-dot.approved { background: var(--success); }
+.nav-dot.rejected { background: var(--danger); }
+
+.nav-dot::after {
+  content: attr(data-label);
+  position: absolute;
+  left: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--fg);
+  color: var(--surface);
+  font-size: 12px;
+  font-family: var(--font-body);
+  white-space: nowrap;
+  padding: 3px 8px;
+  border-radius: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.nav-dot:hover::after { opacity: 1; }
+
+.nav-rail .spacer { flex: 1; }
+
+.feedback-badge {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  display: flex; align-items: center; justify-content: center;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.feedback-badge:hover { background: var(--accent); color: #fff; }
+
+/* ── Main content ── */
+.main {
+  flex: 1;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 48px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 56px;
+  min-width: 0;
+}
+
+/* ── Report header ── */
+.report-header {
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--border);
+}
+
+.report-header .eyebrow {
+  font-size: 0.75em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.report-header h1 {
+  font-family: var(--font-display);
+  font-size: clamp(1.75em, 4vw, 2.5em);
+  font-weight: 700;
+  letter-spacing: var(--letter-spacing-display);
+  line-height: 1.15;
+  margin-bottom: 8px;
+}
+
+.report-header .meta {
+  font-size: 0.875em;
+  color: var(--muted);
+  display: flex; gap: 16px; flex-wrap: wrap;
+}
+
+.report-header .status-bar {
+  display: flex; gap: 12px; margin-top: 20px;
+  align-items: center;
+}
+
+.status-pill {
+  font-size: 0.75em;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 100px;
+  font-family: var(--font-body);
+}
+
+.status-pill.in-review { background: var(--accent-soft); color: var(--accent); }
+.status-pill.approved { background: var(--success-soft); color: var(--success); }
+.status-pill.changes { background: var(--warning-soft); color: var(--warning); }
+
+/* ── Sections ── */
+.section {
+  scroll-margin-top: 32px;
+  position: relative;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.section-number {
+  width: 1.75em; height: 1.75em;
+  border-radius: var(--radius-sm);
+  background: var(--fg);
+  color: var(--surface);
+  font-size: 0.75em;
+  font-weight: 700;
+  font-family: var(--font-display);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.section-header h2 {
+  font-family: var(--font-display);
+  font-size: 1.375em;
+  font-weight: 700;
+  letter-spacing: var(--letter-spacing-display);
+  flex: 1;
+}
+
+.section-actions {
+  display: flex; gap: 8px;
+}
+
+.btn-approve, .btn-reject {
+  font-size: 0.75em;
+  font-weight: 600;
+  font-family: var(--font-body);
+  padding: 6px 14px;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all var(--transition);
+  display: flex; align-items: center; gap: 5px;
+  letter-spacing: 0.01em;
+}
+
+.btn-approve:hover { border-color: var(--success); color: var(--success); background: var(--success-soft); }
+.btn-approve.active { background: var(--success); color: #fff; border-color: var(--success); }
+
+.btn-reject:hover { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
+.btn-reject.active { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+.section-body {
+  font-size: 0.9375em;
+  line-height: 1.7;
+  color: var(--fg);
+}
+
+.section-body p { margin-bottom: 16px; }
+.section-body ul, .section-body ol { margin-bottom: 16px; padding-left: 24px; }
+.section-body li { margin-bottom: 6px; }
+.section-body code {
+  font-family: var(--font-mono);
+  font-size: 0.8125em;
+  background: var(--border);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.section-body pre {
+  font-family: var(--font-mono);
+  font-size: 0.8125em;
+  background: var(--code-surface);
+  color: var(--code-fg);
+  padding: 20px;
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+/* ── Design spec cards ── */
+.swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.swatch {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.swatch-preview {
+  height: 64px;
+}
+
+.swatch-label {
+  padding: 0.625em 0.75em;
+  font-size: 0.75em;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  display: flex; justify-content: space-between; align-items: center;
+}
+
+/* ── Tables ── */
+.table-wrap {
+  overflow-x: auto;
+  margin-bottom: 20px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875em;
+  min-width: 520px;
+}
+
+.data-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.6875em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  padding: 10px 16px;
+  border-bottom: 2px solid var(--border);
+}
+
+.data-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table tr:last-child td { border-bottom: none; }
+
+.data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── Architecture diagram ── */
+.arch-diagram {
+  background: var(--code-surface);
+  color: var(--code-fg);
+  font-family: var(--font-mono);
+  font-size: 0.8125em;
+  padding: 24px;
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
+  overflow-x: auto;
+  line-height: 1.4;
+  white-space: pre;
+}
+
+/* ── Checklist ── */
+.checklist {
+  list-style: none;
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.checklist li {
+  display: flex; align-items: flex-start; gap: 0.75em;
+  padding: 0.625em 0.75em;
+  border-radius: var(--radius-sm);
+  font-size: 0.875em;
+  border: 1px solid transparent;
+  transition: background var(--transition);
+}
+
+.checklist li:hover { background: var(--hover-bg); }
+
+.checklist input[type="checkbox"] {
+  appearance: none;
+  width: 18px; height: 18px;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  cursor: pointer;
+  transition: all var(--transition);
+  position: relative;
+}
+
+.checklist input[type="checkbox"]:checked {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.checklist input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px; top: 2px;
+  width: 5px; height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* ── Inline annotations ── */
+.highlighted {
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+  transition: background var(--transition);
+}
+
+/* Type: feedback (default blue) */
+.highlighted.type-feedback {
+  background: oklch(92% 0.08 255);
+}
+.highlighted.type-feedback:hover { background: oklch(88% 0.10 255); }
+
+/* Type: question (amber, dotted underline) */
+.highlighted.type-question {
+  background: oklch(94% 0.06 80);
+  border-bottom: 1.5px dotted oklch(68% 0.15 80);
+}
+.highlighted.type-question:hover { background: oklch(90% 0.08 80); }
+
+/* Type: suggestion (purple, dotted underline) */
+.highlighted.type-suggestion {
+  background: oklch(94% 0.04 290);
+  border-bottom: 1.5px dotted oklch(55% 0.14 290);
+}
+.highlighted.type-suggestion:hover { background: oklch(90% 0.06 290); }
+
+.highlighted.resolved {
+  background: oklch(92% 0.03 145) !important;
+  text-decoration: line-through;
+  text-decoration-color: oklch(62% 0.16 145 / 0.4);
+  border-bottom: none;
+}
+
+.annotation-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--tooltip-bg);
+  color: var(--tooltip-fg);
+  font-size: 12px;
+  font-family: var(--font-body);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  z-index: 20;
+  box-shadow: 0 4px 16px oklch(0% 0 0 / 0.12);
+  display: flex; gap: 8px; align-items: center;
+}
+
+.annotation-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--fg);
+}
+
+.annotation-tooltip button {
+  background: none; border: none; color: var(--accent);
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  font-family: var(--font-body);
+}
+
+.annotation-tooltip button:hover { opacity: 0.8; }
+
+/* ── Comment thread ── */
+.comment-thread {
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+  display: none;
+}
+
+.comment-thread.open { display: block; }
+
+.comment-thread h4 {
+  font-size: 0.8125em;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 16px;
+  font-family: var(--font-body);
+}
+
+.comment {
+  display: flex; gap: 0.75em;
+  margin-bottom: 1em;
+  font-size: 0.875em;
+}
+
+.comment-avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+  color: var(--muted);
+  font-family: var(--font-display);
+}
+
+.comment-body { flex: 1; }
+.comment-author { font-weight: 600; font-size: 0.8125em; margin-bottom: 2px; }
+.comment-text { color: var(--fg); line-height: 1.5; }
+.comment-meta { font-size: 0.6875em; color: var(--muted); margin-top: 4px; }
+.comment-resolve {
+  font-size: 0.6875em; font-weight: 600;
+  background: none; border: none; color: var(--success);
+  cursor: pointer; margin-top: 4px; padding: 0;
+  font-family: var(--font-body);
+}
+
+.comment-resolve:hover { opacity: 0.8; }
+
+.comment-input-row {
+  display: flex; gap: 10px; align-items: flex-start;
+}
+
+.comment-input-row textarea {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 0.875em;
+  font-family: var(--font-body);
+  resize: vertical;
+  min-height: 40px;
+  line-height: 1.5;
+  background: var(--surface);
+  transition: border-color var(--transition);
+}
+
+.comment-input-row textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.comment-input-row button {
+  font-size: 0.75em; font-weight: 600;
+  font-family: var(--font-body);
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity var(--transition);
+}
+
+.comment-input-row button:hover { opacity: 0.85; }
+
+/* ── Inline annotation composer (appears on text selection) ── */
+.annotation-composer {
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 32px oklch(0% 0 0 / 0.12);
+  z-index: 40;
+  width: 340px;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.annotation-composer.visible { display: flex; }
+
+.annotation-composer textarea {
+  width: 100%;
+  border: none;
+  padding: 14px 16px 10px;
+  font-size: 14px;
+  font-family: var(--font-body);
+  line-height: 1.5;
+  resize: none;
+  min-height: 52px;
+  outline: none;
+  color: var(--fg);
+  background: transparent;
+}
+
+.annotation-composer textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.annotation-composer .composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--composer-footer-bg);
+}
+
+.composer-footer .intents {
+  display: flex; gap: 4px;
+}
+
+.intent-dot {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  transition: all var(--transition);
+  background: transparent;
+  opacity: 0.45;
+}
+
+.intent-dot:hover { opacity: 0.8; }
+
+.intent-dot.selected {
+  opacity: 1;
+  border-color: var(--border);
+}
+
+.intent-dot.feedback {
+  color: var(--accent);
+  background: oklch(95% 0.03 255);
+}
+.intent-dot.feedback.selected {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.intent-dot.question {
+  color: var(--warning);
+  background: oklch(96% 0.04 80);
+}
+.intent-dot.question.selected {
+  background: var(--warning-soft);
+  border-color: var(--warning);
+}
+
+.intent-dot.suggestion {
+  color: oklch(55% 0.14 290);
+  background: oklch(96% 0.03 290);
+}
+.intent-dot.suggestion.selected {
+  background: oklch(94% 0.04 290);
+  border-color: oklch(55% 0.14 290);
+}
+
+.composer-footer .composer-actions {
+  display: flex; gap: 6px; align-items: center;
+}
+
+.composer-footer .composer-hint {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--font-body);
+}
+
+.composer-footer .btn-post {
+  font-size: 12px; font-weight: 600;
+  font-family: var(--font-body);
+  padding: 5px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: opacity var(--transition);
+}
+
+.composer-footer .btn-post:hover { opacity: 0.85; }
+
+/* ── Feedback drawer ── */
+.feedback-drawer {
+  width: 0;
+  min-width: 0;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  transition: width 250ms ease;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  z-index: 5;
+}
+
+.feedback-drawer.open {
+  width: var(--feedback-width);
+  min-width: var(--feedback-width);
+}
+
+.feedback-drawer-inner {
+  width: var(--feedback-width);
+  padding: 32px 24px;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.feedback-drawer.open .feedback-drawer-inner { opacity: 1; }
+
+.feedback-drawer h3 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: var(--letter-spacing-display);
+  margin-bottom: 6px;
+}
+
+.feedback-drawer .drawer-section-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 20px;
+}
+
+.feedback-drawer .empty-state {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  padding: 40px 0;
+  line-height: 1.6;
+}
+
+.drawer-comment {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.drawer-comment .quoted-text {
+  font-style: italic;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 8px;
+  padding-left: 8px;
+  border-left: 2px solid var(--accent);
+}
+
+.drawer-comment .drawer-comment-body {
+  line-height: 1.5;
+}
+
+.drawer-comment .drawer-comment-meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+/* Type badges */
+.drawer-comment-header {
+  display: flex; gap: 8px; align-items: center; margin-bottom: 8px;
+}
+
+.type-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+
+.type-badge.type-feedback  { background: var(--accent-soft); color: var(--accent); }
+.type-badge.type-question  { background: var(--warning-soft); color: var(--warning); }
+.type-badge.type-suggestion { background: oklch(94% 0.04 290); color: oklch(55% 0.14 290); }
+
+.resolved-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--success);
+  background: var(--success-soft);
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+
+/* Drawer group labels */
+.drawer-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 12px 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Replies */
+.drawer-reply {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--drawer-reply-bg);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.drawer-reply .comment-author { font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+.drawer-reply .comment-text { line-height: 1.5; color: var(--fg); }
+
+/* Reply input */
+.drawer-reply-input {
+  display: flex; gap: 8px; margin-top: 12px;
+}
+
+.reply-field {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  background: var(--surface);
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.reply-field:focus { border-color: var(--accent); }
+
+.btn-reply-send {
+  font-size: 12px; font-weight: 600;
+  font-family: var(--font-body);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity var(--transition);
+}
+
+.btn-reply-send:hover { opacity: 0.85; }
+
+/* Resolve button in drawer */
+.drawer-resolve-btn {
+  display: block;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 0;
+  transition: color var(--transition);
+}
+
+.drawer-resolve-btn:hover { color: var(--success); }
+
+/* ── Responsive ── */
+@media (max-width: 1200px) {
+  .main { padding: 40px 48px; }
+  .feedback-drawer.open { width: 320px; min-width: 320px; }
+  .feedback-drawer-inner { width: 320px; }
+}
+
+@media (max-width: 900px) {
+  body { flex-direction: column; }
+  .nav-rail {
+    flex-direction: row;
+    width: 100%; min-width: 100%;
+    height: auto;
+    padding: 12px 20px;
+    position: sticky; top: 0;
+    overflow-x: auto;
+    gap: 10px;
+  }
+  .nav-rail .logo { margin-bottom: 0; margin-right: 8px; }
+  .nav-rail .spacer { display: none; }
+  .nav-dot::after { display: none; }
+  .main { padding: 32px 24px; gap: 40px; }
+  .feedback-drawer {
+    position: fixed; right: 0; top: 0;
+    width: 0; min-width: 0;
+    z-index: 20;
+  }
+  .feedback-drawer.open { width: 100%; min-width: 100%; }
+  .feedback-drawer-inner { width: 100%; }
+}
+
+@media (max-width: 500px) {
+  .main { padding: 24px 16px; gap: 32px; }
+  .report-header h1 { font-size: 1.5em; }
+  .section-header h2 { font-size: 1.125em; }
+  .section-actions { flex-wrap: wrap; }
+  .swatch-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── Settings panel ── */
+.settings-btn {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1.5px dashed var(--border);
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all var(--transition);
+  flex-shrink: 0;
+  margin-top: 8px;
+  font-family: var(--font-body);
+  line-height: 1;
+}
+.settings-btn:hover {
+  border-color: var(--muted);
+  color: var(--fg);
+  background: var(--hover-bg);
+}
+
+.settings-popover {
+  position: fixed;
+  right: 80px;
+  bottom: 32px;
+  width: 300px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 48px oklch(0% 0 0 / 0.18);
+  z-index: 50;
+  padding: 24px;
+  display: none;
+  flex-direction: column;
+  gap: 20px;
+}
+.settings-popover.visible { display: flex; }
+
+.settings-popover h4 {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: var(--letter-spacing-display);
+  margin: 0;
+}
+
+.settings-row {
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.settings-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+/* Theme toggle switch */
+.theme-toggle {
+  display: flex; align-items: center; gap: 10px;
+}
+
+.theme-toggle-switch {
+  position: relative;
+  width: 48px; height: 26px;
+  background: var(--border);
+  border-radius: 100px;
+  cursor: pointer;
+  border: none;
+  transition: background var(--transition);
+}
+.theme-toggle-switch.dark { background: var(--accent); }
+.theme-toggle-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--transition);
+}
+.theme-toggle-switch.dark::after { transform: translateX(22px); }
+
+.theme-toggle-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Font size segmented control */
+.font-size-control {
+  display: flex; gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  width: fit-content;
+}
+.font-size-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all var(--transition);
+  border-right: 1px solid var(--border);
+}
+.font-size-btn:last-child { border-right: none; }
+.font-size-btn:hover { background: var(--hover-bg); color: var(--fg); }
+.font-size-btn.active { background: var(--accent); color: #fff; }
+
+/* Style cards */
+.style-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.style-card {
+  padding: 10px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+  background: var(--surface);
+  text-align: left;
+}
+.style-card:hover { border-color: var(--muted); }
+.style-card.active { border-color: var(--accent); }
+
+.style-card .swatches {
+  display: flex; gap: 3px; margin-bottom: 8px;
+}
+.style-card .swatch-dot {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.style-card .style-name {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: var(--fg);
+  line-height: 1.2;
+}
+
+/* Overlay */
+.settings-overlay {
+  position: fixed; inset: 0;
+  z-index: 49;
+  display: none;
+}
+.settings-overlay.visible { display: block; }
+
+/* Responsive settings */
+@media (max-width: 900px) {
+  .settings-popover {
+    right: 16px;
+    bottom: 80px;
+  }
+}
+
+/* ── Utility ── */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+</style>
+</head>
+<body>
+
+<!-- Nav rail -->
+<!-- NAV RAIL: one button.nav-dot per <section>, in order.
+     data-section index (0-based) and data-label must match each section.
+     Active dot gets class "nav-dot active". The first one is active by default. -->
+<nav class="nav-rail" aria-label="Report sections">
+  <div class="logo">A</div>
+  <button class="nav-dot active" data-label="Summary" data-section="0" aria-label="Executive Summary"></button>
+  <button class="nav-dot" data-label="Design" data-section="1" aria-label="Design System"></button>
+  <button class="nav-dot" data-label="Architecture" data-section="2" aria-label="Architecture"></button>
+  <button class="nav-dot" data-label="Data" data-section="3" aria-label="Performance Data"></button>
+  <button class="nav-dot" data-label="Checklist" data-section="4" aria-label="Checklist"></button>
+  <div class="spacer"></div>
+  <button class="feedback-badge" id="feedbackBadge" aria-label="Open feedback panel">3</button>
+  <button class="settings-btn" id="settingsBtn" aria-label="Appearance settings" title="Appearance">&#9881;</button>
+</nav>
+
+<!-- Main content -->
+<main class="main" id="mainContent">
+<!-- =====================================================================
+     ATLAS — AI Agent Report Viewer  ·  visualize template shell
+     (drives the `document-critique` slot — see document-critique.md)
+     ---------------------------------------------------------------------
+     HOW TO RENDER (visualize skill):
+       1. Copy this file to ~/.local/share/claude-visualize/pages/<slug>.html
+            cp ~/.claude/skills/visualize/templates/atlas-shell.html \
+               ~/.local/share/claude-visualize/pages/<slug>.html
+       2. Update <title> and the .report-header (title + meta row) to the content.
+       3. Replace each <section class="section"> below with ONE section per
+          logical part of the user's content. Reuse the closest pattern — each
+          section is labelled below (summary / spec-cards / diagram / table /
+          checklist). Keep the section's classes and data-screen-label.
+       4. Sync the .nav-rail button.nav-dot list: exactly one dot per section,
+          in order, with matching data-section="N" and data-label.
+       5. Section comments are auto-stripped on load, so a fresh clone starts
+          empty. The seeded inline annotation highlights (a1..a5) and drawer
+          cards are left as markup examples — clear them only if you want a
+          fully bare page. Everything persists per-page to localStorage.
+       6. Keep everything else byte-identical: the entire <style> block, the
+          entire <script> block, and all chrome (nav rail, feedback drawer,
+          annotation composer, appearance/settings panel).
+     APPEARANCE PANEL (gear, top-right) ships at runtime:
+       darkmode toggle · font-size (small/medium/large) · 5 style themes
+       (modern-minimal default, brutalist-experimental, editorial-monocle,
+       human-approachable, tech-utility). Persisted to localStorage:
+       atlas-theme / atlas-font-size / atlas-style (global, intentional).
+     FEEDBACK/COMMENTS persist per-page to localStorage (atlas-state:<pathname>)
+     — see the flag-patch banners in the <script>.
+     Self-contained single HTML — no server route needed.
+     ===================================================================== -->
+
+
+
+  <!-- Report header -->
+  <header class="report-header">
+    <div class="eyebrow">AI Agent Report &middot; June 2026</div>
+    <h1>Platform Migration: Monolith to Service-Oriented Architecture</h1>
+    <div class="meta">
+      <span>Generated by Atlas</span>
+      <span>&middot;</span>
+      <span>12 min read</span>
+      <span>&middot;</span>
+      <span>5 sections</span>
+    </div>
+    <div class="status-bar">
+      <span class="status-pill in-review">In Review</span>
+      <span style="font-size:13px;color:var(--muted)">3 of 5 sections reviewed</span>
+    </div>
+  </header>
+
+  <!-- Section 1: Executive Summary -->
+  <!-- v SECTION 1 · pattern: SUMMARY / PROSE  (report-header + intro paragraphs) — replace inner content, keep classes & data-screen-label -->
+<section class="section" data-screen-label="01 Executive Summary" id="section-0">
+    <div class="section-header">
+      <span class="section-number">1</span>
+      <h2>Executive Summary</h2>
+      <div class="section-actions">
+        <button class="btn-approve" data-section="0" aria-label="Approve section">&#10003; Approve</button>
+        <button class="btn-reject" data-section="0" aria-label="Request changes">&#8634; Changes</button>
+      </div>
+    </div>
+    <div class="section-body" data-section-body="0">
+      <p>
+        This report outlines a phased migration from our current monolithic Rails application
+        to a service-oriented architecture. The primary drivers are <strong>deployment velocity</strong>
+        (currently 2-week cycles due to coupled test suites), <strong>scaling costs</strong>
+        (vertical-only scaling on the monolith), and <strong>team autonomy</strong> (three product
+        teams contending for the same deploy queue).
+      </p>
+      <p>
+        We recommend a <span class="annotatable" data-annotation-id="a1">strangler fig pattern</span>
+        executed over four quarters, extracting services in order of business value and lowest
+        coupling first. The <span class="annotatable" data-annotation-id="a2">estimated total cost
+        is $1.2M in engineering time</span> with a break-even at month 14 from reduced
+        infrastructure spend and faster cycle times.
+      </p>
+      <p>
+        Key risks include database decomposition (currently 140+ tables in a single Postgres
+        instance), inter-service authentication, and maintaining data consistency during the
+        transition window when both systems write to overlapping domains.
+      </p>
+
+      <div class="comment-thread open" data-section-comments="0">
+        <h4>Discussion (2)</h4>
+        <div class="comment" data-comment-id="c1">
+          <div class="comment-avatar">JM</div>
+          <div class="comment-body">
+            <div class="comment-author">Jordan M.</div>
+            <div class="comment-text">The $1.2M estimate feels low — did we account for the data migration tooling build-out? That was ~$200k on the last project alone.</div>
+            <div class="comment-meta">2 hours ago</div>
+            <button class="comment-resolve" data-comment="c1">Mark resolved</button>
+          </div>
+        </div>
+        <div class="comment" data-comment-id="c2">
+          <div class="comment-avatar">AK</div>
+          <div class="comment-body">
+            <div class="comment-author">Aisha K.</div>
+            <div class="comment-text">Good catch. Also worth noting the strangler fig pattern worked well for us in the payments extraction — we should reference that playbook here.</div>
+            <div class="comment-meta">1 hour ago</div>
+            <button class="comment-resolve" data-comment="c2">Mark resolved</button>
+          </div>
+        </div>
+        <div class="comment-input-row">
+          <textarea rows="1" placeholder="Reply to this section…" data-comment-input="0"></textarea>
+          <button data-comment-submit="0">Post</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 2: Design System Spec -->
+  <!-- v SECTION 2 · pattern: SPEC CARDS  (requirements / decisions / finding cards) — replace inner content, keep classes & data-screen-label -->
+<section class="section" data-screen-label="02 Design System" id="section-1">
+    <div class="section-header">
+      <span class="section-number">2</span>
+      <h2>Service Design Tokens</h2>
+      <div class="section-actions">
+        <button class="btn-approve" data-section="1" aria-label="Approve section">&#10003; Approve</button>
+        <button class="btn-reject" data-section="1" aria-label="Request changes">&#8634; Changes</button>
+      </div>
+    </div>
+    <div class="section-body" data-section-body="1">
+      <p>
+        Each extracted service will share a common design token layer for observability,
+        authentication, and inter-service communication. Below is the baseline palette
+        and spacing system.
+      </p>
+
+      <div class="swatch-grid">
+        <div class="swatch">
+          <div class="swatch-preview" style="background:oklch(22% 0.02 250)"></div>
+          <div class="swatch-label"><span>--ink</span><span>#1a1d2e</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-preview" style="background:oklch(99% 0.002 240)"></div>
+          <div class="swatch-label"><span>--canvas</span><span>#f9fafb</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-preview" style="background:oklch(58% 0.18 255)"></div>
+          <div class="swatch-label"><span>--accent</span><span>#3b82f6</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-preview" style="background:oklch(62% 0.16 145)"></div>
+          <div class="swatch-label"><span>--success</span><span>#22c55e</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-preview" style="background:oklch(68% 0.15 80)"></div>
+          <div class="swatch-label"><span>--warning</span><span>#f59e0b</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-preview" style="background:oklch(54% 0.20 20)"></div>
+          <div class="swatch-label"><span>--danger</span><span>#ef4444</span></div>
+        </div>
+      </div>
+
+      <p>
+        <span class="annotatable" data-annotation-id="a3">Spacing follows an 8px baseline grid
+        with a 4px sub-grid for tight components.</span> All services will emit OpenTelemetry
+        traces to a shared collector, with structured JSON logging keyed by
+        <code>trace_id</code> and <code>service_name</code>.
+      </p>
+
+      <div class="comment-thread" data-section-comments="1">
+        <h4>Discussion (1)</h4>
+        <div class="comment" data-comment-id="c3">
+          <div class="comment-avatar">RT</div>
+          <div class="comment-body">
+            <div class="comment-author">Ravi T.</div>
+            <div class="comment-text">Can we add a contrast pair for dark mode tokens? Several services will need embedded dashboards that run in dark contexts.</div>
+            <div class="comment-meta">45 min ago</div>
+            <button class="comment-resolve" data-comment="c3">Mark resolved</button>
+          </div>
+        </div>
+        <div class="comment-input-row">
+          <textarea rows="1" placeholder="Reply to this section…" data-comment-input="1"></textarea>
+          <button data-comment-submit="1">Post</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: Architecture Plan -->
+  <!-- v SECTION 3 · pattern: ARCHITECTURE DIAGRAM  (nodes + edges / data flow) — replace inner content, keep classes & data-screen-label -->
+<section class="section" data-screen-label="03 Architecture Plan" id="section-2">
+    <div class="section-header">
+      <span class="section-number">3</span>
+      <h2>Target Architecture</h2>
+      <div class="section-actions">
+        <button class="btn-approve" data-section="2" aria-label="Approve section">&#10003; Approve</button>
+        <button class="btn-reject" data-section="2" aria-label="Request changes">&#8634; Changes</button>
+      </div>
+    </div>
+    <div class="section-body" data-section-body="2">
+      <p>
+        The target state replaces the monolith with six services behind an API gateway.
+        <span class="annotatable" data-annotation-id="a4">The gateway handles auth, rate
+        limiting, and request routing</span> — each downstream service is responsible only
+        for its domain logic and data.
+      </p>
+
+      <div class="arch-diagram">
+┌─────────────────────────────────────────────────────────┐
+│                     API Gateway (Kong)                    │
+│              auth / rate-limit / routing                   │
+└──────┬──────────┬──────────┬──────────┬─────────────────┘
+       │          │          │          │
+       ▼          ▼          ▼          ▼
+┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐
+│  Auth    │ │  Billing │ │  Orders  │ │  Inventory    │
+│  Service │ │  Service │ │  Service │ │  Service      │
+│  (Go)    │ │  (Go)    │ │  (Rust)  │ │  (Rust)       │
+└────┬─────┘ └────┬─────┘ └────┬─────┘ └──────┬───────┘
+     │            │            │               │
+     └────────────┴────────────┴───────────────┘
+                      │
+              ┌───────┴───────┐
+              ▼               ▼
+        ┌──────────┐   ┌──────────┐
+        │ Events   │   │ Shared   │
+        │ (Kafka)  │   │ Postgres │
+        │          │   │ (per-svc)│
+        └──────────┘   └──────────┘</div>
+
+      <p>
+        Each service owns its database. Cross-service data needs flow through the
+        event bus (Kafka) with an outbox pattern in each emitting service to guarantee
+        at-least-once delivery. <span class="annotatable" data-annotation-id="a5">The
+        migration plan calls for dual-writes during the transition window</span> with
+        a reconciliation job running hourly to detect drift.
+      </p>
+
+      <div class="comment-thread" data-section-comments="2">
+        <h4>Discussion (0)</h4>
+        <div class="comment-input-row">
+          <textarea rows="1" placeholder="Start a discussion…" data-comment-input="2"></textarea>
+          <button data-comment-submit="2">Post</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: Data Table -->
+  <!-- v SECTION 4 · pattern: DATA TABLE  (metrics / rows / comparison) — replace inner content, keep classes & data-screen-label -->
+<section class="section" data-screen-label="04 Performance Data" id="section-3">
+    <div class="section-header">
+      <span class="section-number">4</span>
+      <h2>Service Performance Projections</h2>
+      <div class="section-actions">
+        <button class="btn-approve" data-section="3" aria-label="Approve section">&#10003; Approve</button>
+        <button class="btn-reject" data-section="3" aria-label="Request changes">&#8634; Changes</button>
+      </div>
+    </div>
+    <div class="section-body" data-section-body="3">
+      <p>
+        Benchmarks from early prototypes of the extracted Auth and Billing services,
+        compared against the current monolith baseline.
+      </p>
+
+      <div class="table-wrap"><table class="data-table">
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th class="num">P50 Latency</th>
+            <th class="num">P99 Latency</th>
+            <th class="num">RPS / Instance</th>
+            <th class="num">Cold Start</th>
+            <th>Runtime</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Monolith (current)</td>
+            <td class="num">42ms</td>
+            <td class="num">380ms</td>
+            <td class="num">1,200</td>
+            <td class="num">—</td>
+            <td>Ruby 3.2</td>
+          </tr>
+          <tr>
+            <td>Auth Service (proto)</td>
+            <td class="num">8ms</td>
+            <td class="num">45ms</td>
+            <td class="num">8,500</td>
+            <td class="num">120ms</td>
+            <td>Go 1.22</td>
+          </tr>
+          <tr>
+            <td>Billing Service (proto)</td>
+            <td class="num">14ms</td>
+            <td class="num">92ms</td>
+            <td class="num">4,200</td>
+            <td class="num">210ms</td>
+            <td>Go 1.22</td>
+          </tr>
+          <tr>
+            <td>Orders Service (target)</td>
+            <td class="num">&lt;20ms</td>
+            <td class="num">&lt;100ms</td>
+            <td class="num">5,000+</td>
+            <td class="num">&lt;300ms</td>
+            <td>Rust 1.78</td>
+          </tr>
+          <tr>
+            <td>Inventory Service (target)</td>
+            <td class="num">&lt;15ms</td>
+            <td class="num">&lt;80ms</td>
+            <td class="num">6,000+</td>
+            <td class="num">&lt;250ms</td>
+            <td>Rust 1.78</td>
+          </tr>
+        </tbody>
+      </table></div>
+
+      <p style="font-size:13px;color:var(--muted)">
+        Projections based on load-testing with 10k concurrent connections over 60s.
+        Production results will vary with data volume and query complexity.
+      </p>
+
+      <div class="comment-thread" data-section-comments="3">
+        <h4>Discussion (0)</h4>
+        <div class="comment-input-row">
+          <textarea rows="1" placeholder="Start a discussion…" data-comment-input="3"></textarea>
+          <button data-comment-submit="3">Post</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Implementation Checklist -->
+  <!-- v SECTION 5 · pattern: CHECKLIST  (steps / todos / sequencing) — replace inner content, keep classes & data-screen-label -->
+<section class="section" data-screen-label="05 Implementation Checklist" id="section-4">
+    <div class="section-header">
+      <span class="section-number">5</span>
+      <h2>Implementation Checklist</h2>
+      <div class="section-actions">
+        <button class="btn-approve" data-section="4" aria-label="Approve section">&#10003; Approve</button>
+        <button class="btn-reject" data-section="4" aria-label="Request changes">&#8634; Changes</button>
+      </div>
+    </div>
+    <div class="section-body" data-section-body="4">
+      <ul class="checklist">
+        <li>
+          <input type="checkbox" id="task-0">
+          <label for="task-0"><strong>Q1:</strong> Extract Auth service — OAuth2 + session management, deploy to staging</label>
+        </li>
+        <li>
+          <input type="checkbox" id="task-1">
+          <label for="task-1"><strong>Q1:</strong> Set up shared Kafka cluster (3 brokers, tiered storage)</label>
+        </li>
+        <li>
+          <input type="checkbox" id="task-2" checked>
+          <label for="task-2"><strong>Q2:</strong> Extract Billing service — invoicing, payment processing, webhook dispatch</label>
+        </li>
+        <li>
+          <input type="checkbox" id="task-3">
+          <label for="task-3"><strong>Q2:</strong> Dual-write adapter: monolith writes to both old DB and new Billing DB</label>
+        </li>
+        <li>
+          <input type="checkbox" id="task-4">
+          <label for="task-4"><strong>Q3:</strong> Extract Orders service with idempotency keys and saga orchestration</label>
+        </li>
+        <li>
+          <input type="checkbox" id="task-5">
+          <label for="task-5"><strong>Q3:</strong> Build hourly reconciliation job for monolith/service drift detection</label>
+        </li>
+        <li>
+          <input type="checkbox" id="task-6">
+          <label for="task-6"><strong>Q4:</strong> Extract Inventory service, decommission monolith inventory tables</label>
+        </li>
+        <li>
+          <input type="checkbox" id="task-7">
+          <label for="task-7"><strong>Q4:</strong> Full cutover: monolith becomes read-only, all writes routed to services</label>
+        </li>
+      </ul>
+
+      <div class="comment-thread" data-section-comments="4">
+        <h4>Discussion (0)</h4>
+        <div class="comment-input-row">
+          <textarea rows="1" placeholder="Start a discussion…" data-comment-input="4"></textarea>
+          <button data-comment-submit="4">Post</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Feedback drawer -->
+<aside class="feedback-drawer" id="feedbackDrawer" aria-label="Feedback panel">
+  <div class="feedback-drawer-inner">
+    <h3>Feedback</h3>
+    <div class="drawer-section-label" id="drawerSectionLabel">All annotations</div>
+    <div id="drawerContent">
+      <div class="empty-state">
+        Select text in the report to add an inline annotation, or use the comment threads below each section.
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- Annotation composer -->
+<div class="annotation-composer" id="annotationComposer">
+  <textarea id="composerInput" placeholder="Add a note…" rows="2"></textarea>
+  <div class="composer-footer">
+    <div class="intents" id="intentToggles">
+      <button class="intent-dot feedback selected" data-intent="feedback" title="Feedback">FB</button>
+      <button class="intent-dot question" data-intent="question" title="Question">?</button>
+      <button class="intent-dot suggestion" data-intent="suggestion" title="Suggestion">S</button>
+    </div>
+    <div class="composer-actions">
+      <span class="composer-hint">Enter to post &middot; Esc to cancel</span>
+      <button class="btn-post" id="btnPost">Post</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings overlay -->
+<div class="settings-overlay" id="settingsOverlay"></div>
+
+<!-- Settings popover -->
+<div class="settings-popover" id="settingsPopover" role="dialog" aria-label="Appearance settings">
+  <h4>Appearance</h4>
+
+  <div class="settings-row">
+    <span class="settings-label">Theme</span>
+    <div class="theme-toggle">
+      <span class="theme-toggle-icon">&#9790;</span>
+      <button class="theme-toggle-switch" id="themeToggle" aria-label="Toggle dark mode"></button>
+      <span class="theme-toggle-icon">&#9728;</span>
+    </div>
+  </div>
+
+  <div class="settings-row">
+    <span class="settings-label">Font size</span>
+    <div class="font-size-control" id="fontSizeControl">
+      <button class="font-size-btn" data-size="small">S</button>
+      <button class="font-size-btn active" data-size="medium">M</button>
+      <button class="font-size-btn" data-size="large">L</button>
+    </div>
+  </div>
+
+  <div class="settings-row">
+    <span class="settings-label">Style</span>
+    <div class="style-grid" id="styleGrid">
+      <button class="style-card active" data-style="modern-minimal">
+        <div class="swatches">
+          <span class="swatch-dot" style="background:oklch(99% 0.002 240)"></span>
+          <span class="swatch-dot" style="background:oklch(18% 0.012 250)"></span>
+          <span class="swatch-dot" style="background:oklch(58% 0.18 255)"></span>
+        </div>
+        <div class="style-name">Modern Minimal</div>
+      </button>
+      <button class="style-card" data-style="editorial-monocle">
+        <div class="swatches">
+          <span class="swatch-dot" style="background:oklch(98% 0.004 95)"></span>
+          <span class="swatch-dot" style="background:oklch(20% 0.018 70)"></span>
+          <span class="swatch-dot" style="background:oklch(52% 0.10 28)"></span>
+        </div>
+        <div class="style-name">Editorial</div>
+      </button>
+      <button class="style-card" data-style="human-approachable">
+        <div class="swatches">
+          <span class="swatch-dot" style="background:oklch(98% 0.004 240)"></span>
+          <span class="swatch-dot" style="background:oklch(20% 0.02 240)"></span>
+          <span class="swatch-dot" style="background:oklch(56% 0.12 170)"></span>
+        </div>
+        <div class="style-name">Human</div>
+      </button>
+      <button class="style-card" data-style="tech-utility">
+        <div class="swatches">
+          <span class="swatch-dot" style="background:oklch(98% 0.005 250)"></span>
+          <span class="swatch-dot" style="background:oklch(22% 0.02 240)"></span>
+          <span class="swatch-dot" style="background:oklch(58% 0.16 145)"></span>
+        </div>
+        <div class="style-name">Tech Utility</div>
+      </button>
+      <button class="style-card" data-style="brutalist-experimental">
+        <div class="swatches">
+          <span class="swatch-dot" style="background:oklch(98% 0.004 240)"></span>
+          <span class="swatch-dot" style="background:oklch(15% 0.02 100)"></span>
+          <span class="swatch-dot" style="background:oklch(60% 0.22 25)"></span>
+        </div>
+        <div class="style-name">Brutalist</div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── State ── */
+const state = {
+  annotations: [
+    { id: 'a1', type: 'question', text: 'strangler fig pattern', comment: 'Can we link to the Martin Fowler article here for readers unfamiliar with the pattern?', author: 'Jordan M.', resolved: false, section: 0, replies: [] },
+    { id: 'a2', type: 'feedback', text: 'estimated total cost is $1.2M in engineering time', comment: 'This number needs a footnote citing the SRE team\'s cost model from Q4.', author: 'Aisha K.', resolved: false, section: 0, replies: [] },
+    { id: 'a3', type: 'suggestion', text: 'Spacing follows an 8px baseline grid with a 4px sub-grid for tight components.', comment: 'We should align this with the design-system repo\'s spacing scale — it uses 4px baseline, not 8px.', author: 'Ravi T.', resolved: false, section: 1, replies: [] },
+    { id: 'a4', type: 'question', text: 'The gateway handles auth, rate limiting, and request routing', comment: 'Should the gateway also handle request/response transformation? The orders service uses a different date format.', author: 'Jordan M.', resolved: false, section: 2, replies: [] },
+    { id: 'a5', type: 'feedback', text: 'The migration plan calls for dual-writes during the transition window', comment: 'We need a rollback playbook section. What happens if reconciliation detects >1% drift?', author: 'Aisha K.', resolved: false, section: 2, replies: [] }
+  ],
+  sectionComments: { 0: [], 1: [], 2: [], 3: [], 4: [] },
+  sectionStatus: { 0: null, 1: null, 2: null, 3: null, 4: null },
+  activeAnnotationId: null,
+  taskStatus: {}
+};
+
+/* [visualize PATCH-1] definitions for server-persisted state — no calls here
+   (the bootstrap calls live in PATCH-2b, after all functions are defined).
+   Re-apply via build-atlas-shell.py on re-sync from Open Design. */
+const SLUG = (location.pathname.replace(/^\//, '').replace(/\.html$/, '') || 'page');
+
+let _syncTimer = null;
+function persist() {
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(async () => {
+    try {
+      await fetch('/_feedback/' + encodeURIComponent(SLUG), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state)
+      });
+    } catch(e) {}
+  }, 400);
+}
+
+async function loadState() {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const resp = await fetch('/_feedback/' + encodeURIComponent(SLUG), { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (resp.ok) {
+      Object.assign(state, await resp.json());
+      renderSectionComments();
+      rehydrateAnnotations();
+      syncCheckboxes();
+      for (let i = 0; i < 5; i++) updateSectionButtons(i);
+      updateNavDots();
+      updateFeedbackBadge();
+    }
+  } catch(e) {}
+  persist();
+}
+
+/* ── Render annotations on page ── */
+function renderAnnotations() {
+  document.querySelectorAll('.annotatable').forEach(el => {
+    const id = el.dataset.annotationId;
+    const ann = state.annotations.find(a => a.id === id);
+    if (!ann) return;
+    el.classList.add('highlighted', 'type-' + (ann.type || 'feedback'));
+    if (ann.resolved) el.classList.add('resolved');
+  });
+}
+
+/* ── Selection popover / composer ── */
+const composer = document.getElementById('annotationComposer');
+const composerInput = document.getElementById('composerInput');
+const intentToggles = document.getElementById('intentToggles');
+let lastSelection = null;
+let composerIntent = 'feedback';
+
+/* Stop events inside composer from bubbling — prevents document handlers from stealing focus */
+composer.addEventListener('mousedown', (e) => {
+  e.stopPropagation();
+  /* [visualize PATCH-6] wrap selection before focus — prevents the
+     highlight from vanishing when the input steals focus */
+  if (lastSelection && lastSelection.range && !lastSelection._wrapped) {
+    const s = document.createElement('span');
+    s.className = 'annotatable highlighted type-feedback annotation-pending';
+    s.style.boxShadow = '0 0 0 2px var(--accent-soft)';
+    try {
+      lastSelection.range.surroundContents(s);
+    } catch(_) {
+      /* selection overlaps an existing element — extract + re-wrap */
+      try { const frag = lastSelection.range.extractContents(); s.appendChild(frag); lastSelection.range.insertNode(s); } catch(_2) {}
+    }
+    lastSelection._wrapped = s;
+  }
+  requestAnimationFrame(() => composerInput.focus());
+});
+composer.addEventListener('mouseup', (e) => e.stopPropagation());
+composer.addEventListener('click', (e) => {
+  e.stopPropagation();
+  composerInput.focus();
+});
+
+/* Intent toggle clicks */
+intentToggles.addEventListener('click', (e) => {
+  const btn = e.target.closest('.intent-dot');
+  if (!btn) return;
+  composerIntent = btn.dataset.intent;
+  intentToggles.querySelectorAll('.intent-dot').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  requestAnimationFrame(() => composerInput.focus());
+});
+
+function showComposer(x, y) {
+  const cw = 340, ch = 140;
+  const left = Math.min(x - cw / 2, window.innerWidth - cw - 16);
+  const top = y - ch - 12;
+
+  composer.style.left = Math.max(8, left) + 'px';
+  composer.style.top = Math.max(8, top) + 'px';
+  composer.classList.add('visible');
+  composerInput.value = '';
+  /* [visualize PATCH-5] don't focus here — focus during a drag-select cancels
+     the selection. The input gets focus on explicit click (composer mousedown). */
+}
+
+function hideComposer() {
+  composer.classList.remove('visible');
+  lastSelection = null;
+  window.getSelection().removeAllRanges();
+}
+
+function postAnnotation() {
+  const comment = composerInput.value.trim();
+  if (!comment || !lastSelection) return;
+
+  const id = 'a' + (state.annotations.length + 1);
+  state.annotations.push({
+    id,
+    text: lastSelection.text,
+    comment,
+    type: composerIntent,
+    author: 'You',
+    resolved: false,
+    section: lastSelection.section,
+    replies: []
+  });
+
+  /* Wrap annotated text — reuse PATCH-6 pre-wrap if present */
+  if (lastSelection._wrapped) {
+    lastSelection._wrapped.dataset.annotationId = id;
+    lastSelection._wrapped.className = 'annotatable highlighted type-' + composerIntent;
+    lastSelection._wrapped.style.boxShadow = '';
+    lastSelection._wrapped = null;
+  } else if (lastSelection.range) {
+    const span = document.createElement('span');
+    span.className = 'annotatable highlighted type-' + composerIntent;
+    span.dataset.annotationId = id;
+    try {
+      lastSelection.range.surroundContents(span);
+    } catch (_) {
+      /* selection overlaps an existing annotation — extract + re-wrap */
+      try { const frag = lastSelection.range.extractContents(); span.appendChild(frag); lastSelection.range.insertNode(span); } catch (_2) {}
+    }
+  }
+
+  hideComposer();
+  composerIntent = 'feedback';
+  intentToggles.querySelectorAll('.intent-dot').forEach(b => b.classList.remove('selected'));
+  intentToggles.querySelector('.intent-dot.feedback').classList.add('selected');
+  updateFeedbackBadge();
+  renderDrawer();
+  persist();
+}
+
+/* Post button */
+document.getElementById('btnPost').addEventListener('click', postAnnotation);
+
+/* Enter posts; Shift+Enter adds newline */
+composerInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    postAnnotation();
+  }
+  if (e.key === 'Escape') hideComposer();
+});
+
+/* Show composer when text is selected in a section body */
+document.addEventListener('selectionchange', () => {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.toString().trim()) return;
+
+  /* Don't re-show if composer already visible and textarea is focused */
+  if (composer.classList.contains('visible') && composer.contains(document.activeElement)) return;
+
+  const range = sel.getRangeAt(0);
+  const container = range.commonAncestorContainer;
+  const sectionBody = container.nodeType === 3
+    ? container.parentElement?.closest('[data-section-body]')
+    : container.closest('[data-section-body]');
+  if (!sectionBody) return;
+
+  /* [visualize PATCH-9] if the selection overlaps an existing annotation,
+     open that thread instead of showing a new composer. */
+  {
+    const atStart = range.startContainer.nodeType === 3
+      ? range.startContainer.parentElement?.closest('.annotatable')
+      : range.startContainer.closest?.('.annotatable');
+    const atEnd = range.endContainer.nodeType === 3
+      ? range.endContainer.parentElement?.closest('.annotatable')
+      : range.endContainer.closest?.('.annotatable');
+    const existing = atStart || atEnd;
+    if (existing && existing.dataset.annotationId) {
+      state.activeAnnotationId = existing.dataset.annotationId;
+      openDrawer();
+      requestAnimationFrame(() => {
+        const rf = document.querySelector('[data-ann-reply="' + existing.dataset.annotationId + '"]');
+        if (rf) rf.focus();
+      });
+      return;
+    }
+  }
+
+  lastSelection = {
+    text: sel.toString().trim(),
+    range: range.cloneRange(),
+    section: parseInt(sectionBody.dataset.sectionBody)
+  };
+
+  const rect = range.getBoundingClientRect();
+  showComposer(rect.left + rect.width / 2, rect.top);
+});
+
+/* Dismiss composer when clicking outside it */
+document.addEventListener('mousedown', (e) => {
+  if (!composer.contains(e.target) && composer.classList.contains('visible')) {
+    hideComposer();
+  }
+});
+
+/* ── Click annotation to see it ── */
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('highlighted') || e.target.closest('.highlighted')) {
+    const el = e.target.classList.contains('highlighted') ? e.target : e.target.closest('.highlighted');
+    state.activeAnnotationId = el.dataset.annotationId;
+    openDrawer();
+  }
+});
+
+/* ── Section approve / reject ── */
+document.querySelectorAll('.btn-approve').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const idx = parseInt(btn.dataset.section);
+    state.sectionStatus[idx] = state.sectionStatus[idx] === 'approved' ? null : 'approved';
+    updateSectionButtons(idx);
+    updateNavDots();
+    persist();
+  });
+});
+
+document.querySelectorAll('.btn-reject').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const idx = parseInt(btn.dataset.section);
+    state.sectionStatus[idx] = state.sectionStatus[idx] === 'rejected' ? null : 'rejected';
+    updateSectionButtons(idx);
+    updateNavDots();
+    persist();
+  });
+});
+
+function updateSectionButtons(idx) {
+  const section = document.getElementById('section-' + idx);
+  const approveBtn = section.querySelector('.btn-approve');
+  const rejectBtn = section.querySelector('.btn-reject');
+  const status = state.sectionStatus[idx];
+
+  approveBtn.classList.toggle('active', status === 'approved');
+  rejectBtn.classList.toggle('active', status === 'rejected');
+
+  const statusPill = document.querySelector('.status-pill');
+  const allStatuses = Object.values(state.sectionStatus);
+  const approved = allStatuses.filter(s => s === 'approved').length;
+  const rejected = allStatuses.filter(s => s === 'rejected').length;
+  const total = allStatuses.filter(s => s !== null).length;
+
+  if (rejected > 0) {
+    statusPill.textContent = 'Changes Requested';
+    statusPill.className = 'status-pill changes';
+  } else if (approved === 5) {
+    statusPill.textContent = 'Approved';
+    statusPill.className = 'status-pill approved';
+  } else {
+    statusPill.textContent = 'In Review';
+    statusPill.className = 'status-pill in-review';
+  }
+  document.querySelector('.status-bar span:last-child').textContent = total + ' of 5 sections reviewed';
+}
+
+/* [visualize PATCH-2b/3] on load: strip hardcoded sample section comments so a fresh
+   clone starts empty (PATCH-3), then render persisted comments from state (PATCH-2b).
+   Safe DOM only. */
+function stripSeedSectionComments() {
+  document.querySelectorAll('[data-section-comments]').forEach(thread => {
+    thread.querySelectorAll(':scope > .comment').forEach(c => c.remove());
+    const h4 = thread.querySelector('h4');
+    if (h4) h4.textContent = 'Discussion';
+    thread.classList.remove('open');
+  });
+}
+function renderSectionComments() {
+  Object.keys(state.sectionComments || {}).forEach(idx => {
+    const thread = document.querySelector(`[data-section-comments="${idx}"]`);
+    if (!thread) return;
+    (state.sectionComments[idx] || []).forEach(c => {
+      const div = document.createElement('div');
+      div.className = 'comment';
+      div.dataset.commentId = c.id;
+
+      const avatar = document.createElement('div');
+      avatar.className = 'comment-avatar';
+      avatar.textContent = 'YO';
+
+      const body = document.createElement('div');
+      body.className = 'comment-body';
+
+      const author = document.createElement('div');
+      author.className = 'comment-author';
+      author.textContent = c.author || 'You';
+
+      const text = document.createElement('div');
+      text.className = 'comment-text';
+      text.textContent = c.text;
+
+      const meta = document.createElement('div');
+      meta.className = 'comment-meta';
+      meta.textContent = 'saved session';
+
+      body.appendChild(author);
+      body.appendChild(text);
+      body.appendChild(meta);
+      if (!c.resolved) {
+        const btn = document.createElement('button');
+        btn.className = 'comment-resolve';
+        btn.dataset.comment = c.id;
+        btn.textContent = 'Mark resolved';
+        body.appendChild(btn);
+      }
+
+      div.appendChild(avatar);
+      div.appendChild(body);
+      if (c.resolved) { div.style.opacity = '0.4'; div.style.textDecoration = 'line-through'; }
+      thread.insertBefore(div, thread.lastElementChild);
+      thread.classList.add('open');
+    });
+    const h4 = thread.querySelector('h4');
+    const count = thread.querySelectorAll('.comment').length;
+    if (h4 && count) h4.textContent = 'Discussion (' + count + ')';
+  });
+}
+/* ── Comment threads ── */
+document.querySelectorAll('[data-comment-input]').forEach(textarea => {
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const idx = textarea.dataset.commentInput;
+      document.querySelector(`[data-comment-submit="${idx}"]`).click();
+    }
+  });
+  textarea.addEventListener('input', () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = textarea.scrollHeight + 'px';
+  });
+});
+
+document.querySelectorAll('[data-comment-submit]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const idx = parseInt(btn.dataset.commentSubmit);
+    const textarea = document.querySelector(`[data-comment-input="${idx}"]`);
+    const text = textarea.value.trim();
+    if (!text) return;
+
+    const commentId = 'sc' + Date.now();
+    /* [visualize PATCH-2a] persist the new section comment. */
+    if (!state.sectionComments[idx]) state.sectionComments[idx] = [];
+    state.sectionComments[idx].push({ id: commentId, author: 'You', text, resolved: false });
+    const thread = document.querySelector(`[data-section-comments="${idx}"]`);
+    const h4 = thread.querySelector('h4');
+
+    const div = document.createElement('div');
+    div.className = 'comment';
+    div.dataset.commentId = commentId;
+    div.innerHTML = `
+      <div class="comment-avatar">YO</div>
+      <div class="comment-body">
+        <div class="comment-author">You</div>
+        <div class="comment-text"></div>
+        <div class="comment-meta">Just now</div>
+        <button class="comment-resolve" data-comment="${commentId}">Mark resolved</button>
+      </div>`;
+    div.querySelector('.comment-text').textContent = text;
+    thread.insertBefore(div, thread.lastElementChild);
+    thread.classList.add('open');
+
+    /* Update count */
+    const count = thread.querySelectorAll('.comment').length;
+    h4.textContent = 'Discussion (' + count + ')';
+
+    textarea.value = '';
+    textarea.style.height = 'auto';
+
+    updateFeedbackBadge();
+    persist();
+  });
+});
+
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('comment-resolve')) {
+    const commentEl = e.target.closest('.comment');
+    commentEl.style.opacity = '0.4';
+    commentEl.style.textDecoration = 'line-through';
+    e.target.remove();
+    /* [visualize PATCH-2c] persist resolved state for section comments. */
+    const cid = commentEl && commentEl.dataset.commentId;
+    if (cid) {
+      Object.keys(state.sectionComments || {}).forEach(k => {
+        const c = (state.sectionComments[k] || []).find(x => x.id === cid);
+        if (c) c.resolved = true;
+      });
+      persist();
+    }
+  }
+});
+
+/* ── Nav dots ── */
+const navDots = document.querySelectorAll('.nav-dot');
+const sections = document.querySelectorAll('.section');
+/* [visualize PATCH-8] rehydrate inline annotation highlights from saved state.
+   Seeded annotations (a1-a5) have spans in the source HTML; reviewer-added
+   annotations need their text re-found and re-wrapped after a reload. */
+function rehydrateAnnotations() {
+  /* group pending annotations by section, then walk each section body
+     ONCE looking for all pending texts in that section. O(nodes + anns). */
+  const bySection = {};
+  state.annotations.forEach(a => {
+    if (document.querySelector('[data-annotation-id="' + a.id + '"]')) return;
+    const sec = document.getElementById('section-' + a.section);
+    if (!sec) return;
+    const body = sec.querySelector('[data-section-body]');
+    if (!body) return;
+    if (!bySection[a.section]) bySection[a.section] = { body, anns: [] };
+    bySection[a.section].anns.push(a);
+  });
+  Object.values(bySection).forEach(({ body, anns }) => {
+    const remaining = new Map(anns.map(a => [a.text, a]));
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode()) && remaining.size) {
+      if (node.parentElement && node.parentElement.closest('.annotatable')) continue;
+      const content = node.textContent;
+      for (const [text, a] of remaining) {
+        const idx = content.indexOf(text);
+        if (idx === -1) continue;
+        const range = document.createRange();
+        range.setStart(node, idx);
+        range.setEnd(node, idx + text.length);
+        const span = document.createElement('span');
+        span.className = 'annotatable highlighted type-' + (a.type || 'feedback');
+        span.dataset.annotationId = a.id;
+        if (a.resolved) span.classList.add('resolved');
+        try { range.surroundContents(span); } catch (_) {
+          try { const f = range.extractContents(); span.appendChild(f); range.insertNode(span); } catch (_2) {}
+        }
+        remaining.delete(text);
+        break;
+      }
+    }
+  });
+}
+/* instant render with defaults (no server round-trip) */
+stripSeedSectionComments();
+/* ensure all section comment threads are open (otherwise only section 0 is) */
+document.querySelectorAll('[data-section-comments]').forEach(t => t.classList.add('open'));
+/* [visualize PATCH-10b] checkbox persistence with event delegation —
+   works for any .checklist checkboxes regardless of when they appear. */
+function syncCheckboxes() {
+  document.querySelectorAll('.checklist input[type="checkbox"]').forEach(cb => {
+    const id = cb.id;
+    if (!id) return;
+    if (!state.taskStatus) state.taskStatus = {};
+    if (id in state.taskStatus) {
+      cb.checked = state.taskStatus[id];
+    } else {
+      state.taskStatus[id] = cb.checked;
+    }
+  });
+}
+document.addEventListener('change', (e) => {
+  const cb = e.target;
+  if (!cb.matches('.checklist input[type="checkbox"]') || !cb.id) return;
+  if (!state.taskStatus) state.taskStatus = {};
+  state.taskStatus[cb.id] = cb.checked;
+  persist();
+});
+syncCheckboxes();
+renderSectionComments();
+for (let i = 0; i < 5; i++) updateSectionButtons(i);
+updateNavDots();
+updateFeedbackBadge();
+/* async: load saved state from server, re-render if changed */
+loadState();
+
+function updateNavDots() {
+  navDots.forEach(dot => {
+    const idx = parseInt(dot.dataset.section);
+    dot.classList.remove('approved', 'rejected');
+    if (state.sectionStatus[idx] === 'approved') dot.classList.add('approved');
+    if (state.sectionStatus[idx] === 'rejected') dot.classList.add('rejected');
+  });
+}
+
+navDots.forEach(dot => {
+  dot.addEventListener('click', () => {
+    const idx = parseInt(dot.dataset.section);
+    document.getElementById('section-' + idx).scrollIntoView({ behavior: 'smooth' });
+  });
+});
+
+/* Scroll spy */
+window.addEventListener('scroll', () => {
+  let current = 0;
+  sections.forEach((section, i) => {
+    const rect = section.getBoundingClientRect();
+    if (rect.top < 200) current = i;
+  });
+  navDots.forEach((dot, i) => dot.classList.toggle('active', i === current));
+});
+
+/* Also observe via IntersectionObserver for reliability */
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const idx = parseInt(entry.target.id.split('-')[1]);
+      navDots.forEach((dot, i) => dot.classList.toggle('active', i === idx));
+    }
+  });
+}, { rootMargin: '-40% 0px -50% 0px' });
+
+sections.forEach(s => observer.observe(s));
+
+/* ── Feedback drawer ── */
+const drawer = document.getElementById('feedbackDrawer');
+const drawerContent = document.getElementById('drawerContent');
+const drawerSectionLabel = document.getElementById('drawerSectionLabel');
+
+function openDrawer() {
+  drawer.classList.add('open');
+  renderDrawer();
+}
+
+const TYPE_LABELS = { question: 'Question', feedback: 'Feedback', suggestion: 'Suggestion' };
+
+function typeBadge(type) {
+  return `<span class="type-badge type-${type}">${TYPE_LABELS[type] || 'Feedback'}</span>`;
+}
+
+function annotationCard(a, heading) {
+  const replies = (a.replies || []).map(r => `
+    <div class="drawer-reply">
+      <div class="comment-author">${r.author}</div>
+      <div class="comment-text">${r.text}</div>
+    </div>
+  `).join('');
+
+  return `<div class="drawer-comment" data-ann-id="${a.id}">
+    <div class="drawer-comment-header">
+      ${typeBadge(a.type || 'feedback')}
+      ${a.resolved ? '<span class="resolved-tag">Resolved</span>' : ''}
+    </div>
+    <div class="quoted-text">"${a.text}"</div>
+    <div class="drawer-comment-body">${a.comment}</div>
+    <div class="drawer-comment-meta">${a.author} &middot; ${heading}</div>
+    ${replies}
+    <div class="drawer-reply-input">
+      <input type="text" class="reply-field" placeholder="Reply…" data-ann-reply="${a.id}">
+      <button class="btn-reply-send" data-ann-reply-btn="${a.id}">Send</button>
+    </div>
+    <button class="drawer-resolve-btn" data-ann-resolve="${a.id}">
+      ${a.resolved ? '↩ Un-resolve' : '✓ Resolve'}
+    </button>
+  </div>`;
+}
+
+function renderDrawer() {
+  const ann = state.annotations.find(a => a.id === state.activeAnnotationId);
+  if (!ann) {
+    /* Group by type */
+    const unresolved = state.annotations.filter(a => !a.resolved);
+    if (unresolved.length === 0) {
+      drawerContent.innerHTML = '<div class="empty-state">All annotations resolved.</div>';
+      return;
+    }
+
+    const groups = { question: [], feedback: [], suggestion: [] };
+    unresolved.forEach(a => {
+      const g = a.type || 'feedback';
+      if (groups[g]) groups[g].push(a);
+    });
+
+    drawerSectionLabel.textContent = 'All annotations (' + unresolved.length + ')';
+    let html = '';
+    for (const [type, items] of Object.entries(groups)) {
+      if (!items.length) continue;
+      html += `<div class="drawer-group-label">${TYPE_LABELS[type]} (${items.length})</div>`;
+      items.forEach(a => {
+        const sectionEl = document.getElementById('section-' + a.section);
+        const heading = sectionEl ? sectionEl.querySelector('h2').textContent : 'Section ' + (a.section + 1);
+        html += annotationCard(a, heading);
+      });
+    }
+    drawerContent.innerHTML = html;
+    bindDrawerEvents();
+    return;
+  }
+
+  const sectionEl = document.getElementById('section-' + ann.section);
+  const heading = sectionEl ? sectionEl.querySelector('h2').textContent : 'Section ' + (ann.section + 1);
+  drawerSectionLabel.textContent = heading;
+  drawerContent.innerHTML = annotationCard(ann, heading);
+  bindDrawerEvents();
+}
+
+function bindDrawerEvents() {
+  /* Reply send */
+  drawerContent.querySelectorAll('.btn-reply-send').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.annReplyBtn;
+      const field = drawerContent.querySelector(`[data-ann-reply="${id}"]`);
+      const text = field.value.trim();
+      if (!text) return;
+      const ann = state.annotations.find(a => a.id === id);
+      if (!ann) return;
+      if (!ann.replies) ann.replies = [];
+      ann.replies.push({ author: 'You', text });
+      persist();
+      renderDrawer();
+    });
+  });
+
+  /* Reply field Enter */
+  drawerContent.querySelectorAll('.reply-field').forEach(field => {
+    field.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const btn = drawerContent.querySelector(`[data-ann-reply-btn="${field.dataset.annReply}"]`);
+        if (btn) btn.click();
+      }
+    });
+  });
+
+  /* Resolve / un-resolve */
+  drawerContent.querySelectorAll('.drawer-resolve-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.annResolve;
+      const ann = state.annotations.find(a => a.id === id);
+      if (!ann) return;
+      ann.resolved = !ann.resolved;
+      /* Also update the highlight on page */
+      const el = document.querySelector(`[data-annotation-id="${id}"]`);
+      if (el) el.classList.toggle('resolved', ann.resolved);
+      updateNavDots();
+      updateFeedbackBadge();
+      persist();
+      renderDrawer();
+    });
+  });
+}
+
+document.getElementById('feedbackBadge').addEventListener('click', () => {
+  state.activeAnnotationId = null;
+  drawer.classList.toggle('open');
+  if (drawer.classList.contains('open')) renderDrawer();
+});
+
+function updateFeedbackBadge() {
+  const count = state.annotations.filter(a => !a.resolved).length;
+  const badge = document.getElementById('feedbackBadge');
+  badge.textContent = count;
+  badge.style.display = count === 0 ? 'none' : 'flex';
+}
+
+/* ── Settings ── */
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsPopover = document.getElementById('settingsPopover');
+const settingsOverlay = document.getElementById('settingsOverlay');
+const themeToggle = document.getElementById('themeToggle');
+
+function loadSettings() {
+  const theme = localStorage.getItem('atlas-theme') || 'light';
+  const fontSize = localStorage.getItem('atlas-font-size') || 'medium';
+  const style = localStorage.getItem('atlas-style') || 'modern-minimal';
+
+  document.documentElement.setAttribute('data-theme', theme);
+  document.documentElement.setAttribute('data-font-size', fontSize);
+  document.documentElement.setAttribute('data-style', style);
+
+  themeToggle.classList.toggle('dark', theme === 'dark');
+
+  document.querySelectorAll('.font-size-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.size === fontSize);
+  });
+
+  document.querySelectorAll('.style-card').forEach(c => {
+    c.classList.toggle('active', c.dataset.style === style);
+  });
+}
+
+function openSettings() {
+  settingsPopover.classList.add('visible');
+  settingsOverlay.classList.add('visible');
+}
+
+function closeSettings() {
+  settingsPopover.classList.remove('visible');
+  settingsOverlay.classList.remove('visible');
+}
+
+settingsBtn.addEventListener('click', () => {
+  settingsPopover.classList.contains('visible') ? closeSettings() : openSettings();
+});
+
+settingsOverlay.addEventListener('click', closeSettings);
+
+themeToggle.addEventListener('click', () => {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  themeToggle.classList.toggle('dark', next === 'dark');
+  localStorage.setItem('atlas-theme', next);
+});
+
+document.getElementById('fontSizeControl').addEventListener('click', (e) => {
+  const btn = e.target.closest('.font-size-btn');
+  if (!btn) return;
+  const size = btn.dataset.size;
+  document.documentElement.setAttribute('data-font-size', size);
+  document.querySelectorAll('.font-size-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  localStorage.setItem('atlas-font-size', size);
+});
+
+document.getElementById('styleGrid').addEventListener('click', (e) => {
+  const card = e.target.closest('.style-card');
+  if (!card) return;
+  const style = card.dataset.style;
+  document.documentElement.setAttribute('data-style', style);
+  document.querySelectorAll('.style-card').forEach(c => c.classList.remove('active'));
+  card.classList.add('active');
+  localStorage.setItem('atlas-style', style);
+});
+
+/* Escape closes settings */
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && settingsPopover.classList.contains('visible')) {
+    closeSettings();
+  }
+});
+
+loadSettings();
+
+/* ── Init ── */
+renderAnnotations();
+updateNavDots();
+updateFeedbackBadge();
+
+/* Restore section button states */
+Object.entries(state.sectionStatus).forEach(([idx, status]) => {
+  if (status) updateSectionButtons(parseInt(idx));
+});
+</script>
+
+</body>
+</html>
