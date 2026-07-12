@@ -1,0 +1,24 @@
+name: release-plugin
+description: "Bump, commit, and push to release a plugin in this marketplace"
+trigger: "after enhancing a plugin (skill/hooks/commands) and you want to publish it"
+steps:
+  - name: pick-plugin
+    action: "Identify the plugin to release from recent changes (git status / git log). If more than one plugin changed or it's ambiguous, ask the user which plugin to release."
+
+  - name: decide-bump
+    action: "Read the current version from plugins/<plugin>/.claude-plugin/plugin.json. Default to a PATCH bump (e.g. 0.1.1 -> 0.1.2). Per the global versioning policy, NEVER auto-bump minor or major without explicit instruction."
+    note: "patch = doc/fix/refactor; minor = new feature (needs explicit OK); major = breaking change (needs explicit OK)."
+
+  - name: bump
+    action: "Edit plugins/<plugin>/.claude-plugin/plugin.json to the new version. If .claude-plugin/marketplace.json mirrors a version for this plugin, bump it there too. Also sync the installed cache copy at ~/.claude/plugins/cache/ofan-plugins/<plugin>/*/.claude-plugin/plugin.json."
+
+  - name: commit
+    action: 'Stage and commit the version bump (plus any unstaged plugin changes) with a message like "chore(<plugin>): bump to <new-version>", summarizing the substance of the change in the body.'
+
+  - name: push
+    run: "git push origin $(git branch --show-current)"
+    fail: "push failed - check remote/auth (origin is the marketplace git remote)"
+
+  - name: verify
+    action: "Confirm local and origin are in sync (git log origin/$(git branch --show-current)..HEAD is empty). Report the released plugin + new version."
+    note: "Alternative one-shot: tmux-headline:do-release does semantic bump + tag + push."
