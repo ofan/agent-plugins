@@ -1,7 +1,7 @@
 {
   "name": "process-loops",
   "description": "Define, run, and track sequential process loops (deploy, dev, onboard) with YAML definitions and task-based progress tracking",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "ofan",
     "url": "https://github.com/ofan"
