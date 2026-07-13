@@ -100,7 +100,7 @@ Line-by-line diff viewer with commenting. Side-by-side or unified view.
 Use for: git diffs, code changes, patches.
 
 ### `svg-diagram`
-Clean, static, **auto-laid-out** SVG diagram from a declarative `{nodes, edges}` spec (embedded zero-dependency layout helper — you never write coordinates). Boxes + routed arrows, semantic shapes (process, decision diamond, data cylinder, external) and colors, edge labels, LR/TB layout.
+Clean, **auto-laid-out** SVG diagram from a declarative `{nodes, edges}` spec (embedded zero-dependency helper — you never write coordinates). Boxes + routed arrows, semantic shapes (process, decision diamond, data cylinder, external) and colors, edge labels, LR/TB layout. Renders at legible size in a **bounded zoom/pan viewport** (auto fit-to-width floored at 70%, `+/−/Fit/1:1` controls, ⌘/Ctrl+wheel zoom, drag pan) and **word-wraps** long labels — so wide flows stay readable instead of shrinking to microscopic text.
 Use for: architecture, data/request flow, pipelines, sequence of components, state machines, dependency maps — the default for "show me how it works" pictures.
 
 ### `code-map`
