@@ -12,9 +12,9 @@ This also replaces the `<div>`-with-arrow-glyphs pattern: that's a fallback peop
 
 A wide `LR` flow has a large intrinsic width. If you force it to `width:100%` inside a narrow column, the browser **shrinks the whole SVG** and the text becomes microscopic — the #1 reason hand-rolled SVG diagrams read badly. This helper fixes that structurally:
 
-- **Fonts never shrink below legible.** The SVG renders at (near) natural pixel size; it is **not** squished to the column width. Instead the diagram lives in a **bounded viewport** (`max-width` + `max-height`) that **scrolls and zooms**.
-- **Fit-to-width, floored.** On mount it auto-fits to the container but never below ~70% scale — past that it scrolls rather than turning text to mush.
-- **Zoom controls** — `+ / − / Fit / 1:1` buttons, ⌘/Ctrl+wheel to zoom (cursor-anchored), drag to pan. Zero-dependency, inline.
+- **Fonts never shrink below legible.** The SVG renders at (near) natural pixel size; it is **not** squished to the column width. Instead the diagram lives in an **embedded, borderless viewport** that fits its column width and **scrolls + zooms**.
+- **Fit-to-width, no overflow.** On mount it auto-fits to the container width so it never spills out of its column; zoom in (hover controls) for detail on dense flows.
+- **Controls are hover-only, chrome-free.** No card border or background — the diagram sits directly in the page (embedded, not a card). A small `+ / − / Fit / 1:1` control pill fades in on hover (top-right); ⌘/Ctrl+wheel zooms (cursor-anchored), drag pans. Zero-dependency, inline.
 - **Labels word-wrap** — long `label`/`sub` text wraps onto multiple lines inside a sensibly-capped node width instead of forcing a 400px-wide box or overflowing.
 
 ## How to use
@@ -180,25 +180,39 @@ function renderDiagram(spec, mountId){
     ${nodes.map(n=>shape(n)+text(n)).join('')}
   </svg>`;
 
-  // 6. bounded, zoomable, pannable viewport (no external deps)
-  const bs='font:inherit;cursor:pointer;border:1px solid var(--border,#e5e7eb);background:var(--surface,#fff);color:var(--fg,#333);border-radius:6px;padding:2px 9px;min-width:26px;line-height:1.5';
-  const btn=(z,t)=>`<button type="button" data-dgm="${z}" style="${bs}">${t}</button>`;
-  const html=`<div class="dgm-wrap" style="position:relative;max-width:${MAXW}px;margin:10px auto;border:1px solid var(--border,#e5e7eb);border-radius:12px;background:var(--surface,#fff);overflow:hidden">
-    <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--border,#eee);font-size:12px;color:var(--muted,#6b7280)">
-      ${btn('out','&minus;')}${btn('in','+')}${btn('fit','Fit')}${btn('reset','1:1')}
-      <span data-dgm="pct" style="font-family:var(--font-mono,ui-monospace,monospace);min-width:40px;text-align:center">100%</span>
-      <span style="margin-left:auto;opacity:.85">drag to pan &middot; &#8984;/Ctrl+scroll to zoom</span>
-    </div>
-    <div data-dgm="vp" style="overflow:auto;max-height:${MAXH}px;cursor:grab;background:var(--bg,#fbfbfd)">${svg}</div>
+  // 6. embedded, borderless viewport with hover-revealed zoom/pan controls
+  //    (no card chrome; the diagram sits directly in the page — controls fade in on hover)
+  if(!document.getElementById('dgm-css')){
+    const sty=document.createElement('style'); sty.id='dgm-css';
+    sty.textContent='.dgm-wrap{position:relative;margin:6px auto}'
+      +'.dgm-ctrl{position:absolute;top:4px;right:4px;display:flex;align-items:center;gap:1px;padding:2px 3px;border-radius:9px;'
+        +'background:color-mix(in oklch, var(--surface,#fff) 80%, transparent);box-shadow:0 1px 5px rgba(0,0,0,.1);'
+        +'opacity:0;transition:opacity .14s;pointer-events:none;z-index:3}'
+      +'.dgm-wrap:hover .dgm-ctrl,.dgm-wrap:focus-within .dgm-ctrl{opacity:1;pointer-events:auto}'
+      +'.dgm-ctrl button{font:inherit;font-size:12px;cursor:pointer;border:none;background:transparent;color:var(--fg,#333);'
+        +'border-radius:6px;padding:2px 7px;min-width:22px;line-height:1.5}'
+      +'.dgm-ctrl button:hover{background:var(--border,#e5e7eb)}'
+      +'.dgm-ctrl .dgm-pct{font-family:var(--font-mono,ui-monospace,monospace);font-size:11px;color:var(--muted,#6b7280);min-width:36px;text-align:center;padding:0 2px}'
+      +'.dgm-vp{overflow:auto;border-radius:8px}'
+      +'.dgm-vp::-webkit-scrollbar{height:8px;width:8px}'
+      +'.dgm-vp::-webkit-scrollbar-thumb{background:var(--border,#dcdfe4);border-radius:5px}'
+      +'.dgm-vp::-webkit-scrollbar-track{background:transparent}';
+    document.head.appendChild(sty);
+  }
+  const btn=(z,t)=>`<button type="button" data-dgm="${z}" aria-label="zoom ${z}">${t}</button>`;
+  const html=`<div class="dgm-wrap" style="max-width:${MAXW}px">
+    <div class="dgm-ctrl">${btn('out','&minus;')}${btn('in','+')}${btn('fit','Fit')}${btn('reset','1:1')}<span class="dgm-pct">100%</span></div>
+    <div class="dgm-vp" data-dgm="vp" style="max-height:${MAXH}px;cursor:grab">${svg}</div>
   </div>`;
   const el=document.getElementById(mountId); if(!el) return svg; el.innerHTML=html;
 
   // 7. wire controls (scoped to this mount)
   const wrapEl=el.querySelector('.dgm-wrap'), vp=el.querySelector('[data-dgm=vp]');
-  const svgEl=vp.querySelector('svg'), pct=el.querySelector('[data-dgm=pct]');
-  const MIN=0.4, MAX=4; let scale=1;
-  const avail=()=>Math.max(120,(vp.clientWidth||MAXW)-2);
-  const fitScale=()=>Math.min(1, Math.max(0.7, avail()/W));   // fit to width, floored at 70% (scroll beyond)
+  const svgEl=vp.querySelector('svg'), pct=el.querySelector('.dgm-pct');
+  const MIN=0.3, MAX=4; let scale=1;
+  const avail=()=>Math.max(120,(vp.clientWidth||MAXW));
+  // fit to the container WIDTH so the diagram never overflows its column; zoom in on hover for detail.
+  const fitScale=()=>Math.min(1, Math.max(0.34, avail()/W));
   function apply(){ scale=Math.max(MIN,Math.min(MAX,scale));
     svgEl.setAttribute('width',(W*scale).toFixed(0)); svgEl.setAttribute('height',(H*scale).toFixed(0));
     if(pct) pct.textContent=Math.round(scale*100)+'%'; }
@@ -213,9 +227,9 @@ function renderDiagram(spec, mountId){
     scale*= e.deltaY<0?1.12:1/1.12; apply(); const k=scale/old;
     vp.scrollLeft=px*k-(e.clientX-r.left); vp.scrollTop=py*k-(e.clientY-r.top);
   },{passive:false});
-  let drag=false,dx,dy,sl,st;
-  vp.addEventListener('mousedown',e=>{ if(e.button!==0)return; drag=true; dx=e.clientX; dy=e.clientY; sl=vp.scrollLeft; st=vp.scrollTop; vp.style.cursor='grabbing'; e.preventDefault(); });
-  window.addEventListener('mousemove',e=>{ if(!drag)return; vp.scrollLeft=sl-(e.clientX-dx); vp.scrollTop=st-(e.clientY-dy); });
+  let drag=false,dx,dy,sl,stp;
+  vp.addEventListener('mousedown',e=>{ if(e.button!==0)return; drag=true; dx=e.clientX; dy=e.clientY; sl=vp.scrollLeft; stp=vp.scrollTop; vp.style.cursor='grabbing'; e.preventDefault(); });
+  window.addEventListener('mousemove',e=>{ if(!drag)return; vp.scrollLeft=sl-(e.clientX-dx); vp.scrollTop=stp-(e.clientY-dy); });
   window.addEventListener('mouseup',()=>{ if(drag){ drag=false; vp.style.cursor='grab'; } });
   return svg;
 }
@@ -227,7 +241,7 @@ function renderDiagram(spec, mountId){
 - **vs raw hand-authored SVG** — removes the coordinate-hallucination failure mode entirely; the agent never writes an `x`/`y`.
 - **vs Mermaid/PlantUML** — those need an external renderer (CDN/Kroki), breaking the skill's "single self-contained HTML, no required external dependencies" rule. This helper is ~140 lines, inline, zero-dep.
 - **vs `<div>` flex + arrow glyphs** — real shapes (decision diamonds, data cylinders), routed arrows, edge labels, semantic color; and it's actually *less* work to author (just data).
-- **vs squished `width:100%` SVG** — that shrinks text to nothing on wide flows. This renders at legible size in a zoom/pan viewport instead.
+- **vs squished `width:100%` SVG** — that shrinks text to nothing on wide flows. This fits to column width at legible size in an embedded, borderless zoom/pan viewport (hover-revealed controls) instead.
 - **vs `code-map`** — `code-map` is the heavy interactive draggable/zoomable graph explorer. `svg-diagram` is the lightweight "here's how it works" picture you drop into a doc or section (now with a light zoom/pan viewport so wide flows stay readable). Use `svg-diagram` by default for design/data-flow; reach for `code-map` only when the user needs to explore a large graph interactively.
 
 Sources: [Why AI agents can't draw SVG](https://dev.to/msteja/why-ai-agents-cant-draw-svg-and-what-to-do-instead-1ci) - [svg-pan-zoom-container (zero-dep viewport transform)](https://www.npmjs.com/package/svg-pan-zoom-container) - [See it. Say it. Sorted (compositional diagram gen)](https://ar5iv.labs.arxiv.org/html/2508.15222) - [SVG-vs-Mermaid-vs-Excalidraw skill design](https://dev.classmethod.jp/articles/build-svg-diagram-skill-for-claude-code/)
