@@ -81,6 +81,7 @@ Also the index: `http://<ip>:<port>/`
 5. **Ensure server is running** — start or reuse as described above
 6. **Write page to `~/.local/share/claude-visualize/pages/<slug>.html`** and print the URL
 7. **Single self-contained HTML file.** Modern-minimal theme: light `oklch` surface, system-font stack, indigo (`oklch(58% 0.18 255)`) accent. The report viewer (document-critique) ships an appearance panel with darkmode, font-size, and style-theme toggles. No required external dependencies (system fonts; no Google Fonts needed).
+8. **Diagrams = declarative, never hand-placed coordinates.** For any architecture / data-flow / pipeline / sequence / state diagram, use the `svg-diagram` template: declare `{nodes, edges}` as data and call `renderDiagram(spec)`. NEVER hand-write SVG `x`/`y` coordinates (LLMs mis-place them — boxes overlap, arrows tangle), and don't fall back to `<div>` boxes with `→` glyphs — the helper makes real SVG easier and better.
 
 ## Templates
 
@@ -98,9 +99,13 @@ Use for: reports, audits, finding lists, spec reviews, planning docs, design doc
 Line-by-line diff viewer with commenting. Side-by-side or unified view.
 Use for: git diffs, code changes, patches.
 
+### `svg-diagram`
+Clean, static, **auto-laid-out** SVG diagram from a declarative `{nodes, edges}` spec (embedded zero-dependency layout helper — you never write coordinates). Boxes + routed arrows, semantic shapes (process, decision diamond, data cylinder, external) and colors, edge labels, LR/TB layout.
+Use for: architecture, data/request flow, pipelines, sequence of components, state machines, dependency maps — the default for "show me how it works" pictures.
+
 ### `code-map`
-Architecture diagram rendered as interactive graph. Nodes and edges with relationships.
-Use for: system architecture, component relationships, data flow diagrams, dependency maps.
+Architecture diagram rendered as an **interactive** graph (draggable/zoomable, click-to-annotate). Heavier than `svg-diagram`; use only when the user needs to *explore* a large graph, not just see it.
+Use for: large explorable dependency graphs where interaction matters.
 
 ### `design-playground`
 Interactive visual explorer with live controls (sliders, color pickers, toggles). Renders a preview that updates instantly.
@@ -181,13 +186,13 @@ Content is a markdown spec with sections, requirements, decisions.
 
 → Pick `document-critique`. Structured review with sections as finding groups.
 
-### Example 7: Data flow description → code-map
+### Example 7: Data flow description → svg-diagram
 
 User: "visualize how requests flow through the proxy"
 
 Content describes a pipeline: Claude Code → deepclaude launcher → proxy → provider API.
 
-→ Pick `code-map`. Nodes for each component, labeled edges for the flow.
+→ Pick `svg-diagram`. Declare each component as a node (client=external, proxy=process, provider=external) and the hops as edges; call `renderDiagram({dir:'LR', nodes, edges})`. Never hand-place coordinates.
 
 ### Example 8: Unknown/mixed → generic-render
 
@@ -222,7 +227,8 @@ Ask yourself: **what IS this content?** Not what the user called it, not what su
 | A list of issues, findings, problems with severity | `document-critique` |
 | A spec, proposal, or document for review | `document-critique` |
 | `+++`/`---`/`@@` diff markers | `diff-review` |
-| Component descriptions, nodes + edges, architecture | `code-map` |
+| Architecture, data flow, pipeline, sequence, state machine | `svg-diagram` |
+| Large graph the user needs to *explore* interactively | `code-map` |
 | UI descriptions with visual parameters | `design-playground` |
 | Tabular data, JSON arrays, CSVs | `data-explorer` |
 | Concepts and relationships, taxonomies | `concept-map` |

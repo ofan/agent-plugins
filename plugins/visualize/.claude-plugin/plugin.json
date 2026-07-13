@@ -1,7 +1,7 @@
 {
   "name": "visualize",
   "description": "Renders content as reviewable HTML pages on a local HTTP server with annotation, feedback, and server-side persistence for review loops",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "ofan",
     "url": "https://github.com/ofan"
