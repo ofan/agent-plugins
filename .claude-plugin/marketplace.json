@@ -23,6 +23,12 @@
       "description": "Renders content as reviewable HTML pages on a local HTTP server with annotation, feedback, and server-side persistence",
       "version": "0.1.3",
       "source": "./plugins/visualize"
+    },
+    {
+      "name": "ccgw",
+      "description": "Launch Claude Code in gateway mode against llm-proxy so proxy models appear in the /model picker",
+      "version": "0.1.0",
+      "source": "./plugins/ccgw"
     }
   ]
 }

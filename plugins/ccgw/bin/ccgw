@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# ccgw — Claude Code in gateway mode (Part B wrapper for llm-proxy).
+#
+# Points Claude Code at the llm-proxy and enables gateway model discovery, so the
+# proxy's models (claude-<backend>/<model>, incl. [1m]) appear in the /model
+# picker. Bypasses the deepclaude wrapper and execs the real claude binary.
+#
+# Env overrides:
+#   LLM_PROXY_URL        proxy base URL          (default https://proxy.lab.tf)
+#   LLM_PROXY_TOKEN      bearer token to send    (default "proxy"; proxy is open)
+#   LLM_PROXY_FALLBACK   Anthropic-native base URL to use if the proxy is
+#                        unreachable at launch   (default empty = no fallback,
+#                        warn and proceed so the error is visible)
+#   CCGW_CLAUDE_BIN      explicit path to the real claude binary (escape hatch)
+#   CCGW_PROBE_TIMEOUT   proxy reachability probe timeout, seconds (default 4)
+#   CCGW_DEBUG=1         print resolved config before exec
+#
+# All args are passed through to claude.  Reversible: this is installed as the
+# ~/bin/claude symlink target; deepclaude remains available as `deepclaude`.
+set -euo pipefail
+
+PROXY_URL="${LLM_PROXY_URL:-https://proxy.lab.tf}"
+TOKEN="${LLM_PROXY_TOKEN:-proxy}"
+FALLBACK_URL="${LLM_PROXY_FALLBACK:-}"
+PROBE_TIMEOUT="${CCGW_PROBE_TIMEOUT:-4}"
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+warn() { printf '  \033[33m[ccgw]\033[0m %s\n' "$*" >&2; }
+
+# --- resolve the REAL claude binary (skip this wrapper + the deepclaude wrapper) ---
+# Prefer the active-node claude on PATH (kept current by `claude update`); the
+# mise 'lts' symlink can point at an older node with a stale claude, so it's last.
+resolve_claude() {
+    if [ -n "${CCGW_CLAUDE_BIN:-}" ] && [ -x "$CCGW_CLAUDE_BIN" ]; then
+        echo "$CCGW_CLAUDE_BIN"; return 0
+    fi
+    local IFS=: p real
+    for p in $PATH; do
+        case "$p" in "$SELF_DIR"|"$HOME/bin") continue ;; esac
+        [ -x "$p/claude" ] || continue
+        real="$(readlink -f "$p/claude" 2>/dev/null || echo "$p/claude")"
+        case "$real" in *@anthropic-ai/claude-code*) echo "$real"; return 0 ;; esac
+    done
+    local lts="$HOME/.local/share/mise/installs/node/lts/bin/claude"
+    if [ -x "$lts" ]; then real="$(readlink -f "$lts")"; case "$real" in
+        *@anthropic-ai/claude-code*) echo "$real"; return 0 ;; esac
+    fi
+    return 1
+}
+
+CLAUDE_BIN="$(resolve_claude)" || { warn "could not locate the real claude binary; set CCGW_CLAUDE_BIN"; exit 127; }
+
+# --- pick base URL: proxy if reachable, else optional fallback, else proxy+warn ---
+BASE="$PROXY_URL"; DISCOVERY=1
+if curl -fsS -m "$PROBE_TIMEOUT" "$PROXY_URL/version" >/dev/null 2>&1; then
+    :
+elif [ -n "$FALLBACK_URL" ]; then
+    warn "proxy $PROXY_URL unreachable — falling back to $FALLBACK_URL (no gateway models)"
+    BASE="$FALLBACK_URL"; DISCOVERY=0
+else
+    warn "proxy $PROXY_URL unreachable — launching against it anyway (set LLM_PROXY_FALLBACK for a fallback)"
+fi
+
+# --- gateway-mode env. Let /model own selection: do NOT set ANTHROPIC_MODEL or
+#     ANTHROPIC_DEFAULT_*_MODEL, and clear any inherited from a prior wrapper. ---
+export ANTHROPIC_BASE_URL="$BASE"
+export ANTHROPIC_AUTH_TOKEN="$TOKEN"
+[ "$DISCOVERY" = 1 ] && export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
+unset ANTHROPIC_API_KEY ANTHROPIC_MODEL 2>/dev/null || true
+unset ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL \
+      ANTHROPIC_DEFAULT_HAIKU_MODEL ANTHROPIC_DEFAULT_FABLE_MODEL \
+      CLAUDE_CODE_SUBAGENT_MODEL CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC 2>/dev/null || true
+
+# settings.json can silently re-disable discovery (deepclaude-era leftover).
+if [ "$DISCOVERY" = 1 ] && command -v python3 >/dev/null 2>&1; then
+    if python3 -c "import json,sys; sys.exit(0 if 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC' in json.load(open('$HOME/.claude/settings.json')).get('env',{}) else 1)" 2>/dev/null; then
+        warn "~/.claude/settings.json sets CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC — it suppresses gateway discovery; remove it for the /model picker to populate."
+    fi
+fi
+
+# --- clean PATH so any child 'claude' resolves to the real binary, not a wrapper ---
+CLEAN_PATH=""; _oifs="$IFS"; IFS=:
+for _p in $PATH; do
+    case "$_p" in "$SELF_DIR"|"$HOME/bin"|"") continue ;; esac
+    CLEAN_PATH="${CLEAN_PATH:+$CLEAN_PATH:}$_p"
+done
+IFS="$_oifs"
+
+if [ "${CCGW_DEBUG:-}" = 1 ]; then
+    warn "claude   = $CLAUDE_BIN"
+    warn "base URL = $BASE  (discovery=$DISCOVERY)"
+fi
+
+PATH="$CLEAN_PATH" exec "$CLAUDE_BIN" "$@"

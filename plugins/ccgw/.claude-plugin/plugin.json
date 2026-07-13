@@ -1,0 +1,9 @@
+{
+  "name": "ccgw",
+  "description": "Launch Claude Code in gateway mode against llm-proxy: enables /v1/models discovery so the proxy's models (claude-<backend>/<model>, incl. [1m]) appear in the /model picker",
+  "version": "0.1.0",
+  "author": {
+    "name": "ofan",
+    "url": "https://github.com/ofan"
+  }
+}
