@@ -11,12 +11,16 @@
 #   LLM_PROXY_FALLBACK   Anthropic-native base URL to use if the proxy is
 #                        unreachable at launch   (default empty = no fallback,
 #                        warn and proceed so the error is visible)
+#   CCGW_BYPASS=1        skip the proxy entirely — unset ANTHROPIC_BASE_URL so
+#                        Claude Code uses its default Anthropic API directly
 #   CCGW_CLAUDE_BIN      explicit path to the real claude binary (escape hatch)
 #   CCGW_PROBE_TIMEOUT   proxy reachability probe timeout, seconds (default 4)
 #   CCGW_DEBUG=1         print resolved config before exec
 #
-# All args are passed through to claude.  Reversible: this is installed as the
-# ~/bin/claude symlink target; deepclaude remains available as `deepclaude`.
+# All args are passed through to claude.  The wrapper recognises one flag of its
+# own: `-b` / `--direct` (skip the proxy, use the default Anthropic API — same
+# as CCGW_BYPASS=1).  Reversible: this is installed as the ~/bin/claude symlink
+# target; deepclaude remains available as `deepclaude`.
 set -euo pipefail
 
 PROXY_URL="${LLM_PROXY_URL:-https://proxy.lab.tf}"
@@ -50,9 +54,24 @@ resolve_claude() {
 
 CLAUDE_BIN="$(resolve_claude)" || { warn "could not locate the real claude binary; set CCGW_CLAUDE_BIN"; exit 127; }
 
+# --- parse wrapper-only flags out of $@ before passing through to claude ---
+FORWARD=(); BYPASS="${CCGW_BYPASS:-0}"; _flag_direct=0; _flag_form=""
+for _a in "$@"; do
+    case "$_a" in
+        -b)          BYPASS=1; _flag_direct=1; _flag_form="-b" ;;
+        --direct)    BYPASS=1; _flag_direct=1; _flag_form="--direct" ;;
+        *) FORWARD+=("$_a") ;;
+    esac
+done
+set -- "${FORWARD[@]}"
+
 # --- pick base URL: proxy if reachable, else optional fallback, else proxy+warn ---
 BASE="$PROXY_URL"; DISCOVERY=1
-if curl -fsS -m "$PROBE_TIMEOUT" "$PROXY_URL/version" >/dev/null 2>&1; then
+if [ "$BYPASS" = 1 ]; then
+    _how=""; [ "${CCGW_BYPASS:-0}" = 1 ] && _how="CCGW_BYPASS=1"; [ "$_flag_direct" = 1 ] && _how="${_how:+$_how + }${_flag_form}"
+    warn "bypassing proxy (${_how}) — using default Anthropic API"
+    BASE=""; DISCOVERY=0
+elif curl -fsS -m "$PROBE_TIMEOUT" "$PROXY_URL/version" >/dev/null 2>&1; then
     :
 elif [ -n "$FALLBACK_URL" ]; then
     warn "proxy $PROXY_URL unreachable — falling back to $FALLBACK_URL (no gateway models)"
@@ -63,9 +82,11 @@ fi
 
 # --- gateway-mode env. Let /model own selection: do NOT set ANTHROPIC_MODEL or
 #     ANTHROPIC_DEFAULT_*_MODEL, and clear any inherited from a prior wrapper. ---
-export ANTHROPIC_BASE_URL="$BASE"
-export ANTHROPIC_AUTH_TOKEN="$TOKEN"
-[ "$DISCOVERY" = 1 ] && export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
+if [ -n "$BASE" ]; then
+    export ANTHROPIC_BASE_URL="$BASE"
+    export ANTHROPIC_AUTH_TOKEN="$TOKEN"
+    [ "$DISCOVERY" = 1 ] && export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
+fi
 unset ANTHROPIC_API_KEY ANTHROPIC_MODEL 2>/dev/null || true
 unset ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL \
       ANTHROPIC_DEFAULT_HAIKU_MODEL ANTHROPIC_DEFAULT_FABLE_MODEL \
@@ -88,7 +109,7 @@ IFS="$_oifs"
 
 if [ "${CCGW_DEBUG:-}" = 1 ]; then
     warn "claude   = $CLAUDE_BIN"
-    warn "base URL = $BASE  (discovery=$DISCOVERY)"
+    warn "base URL = ${BASE:-<default>}  (discovery=$DISCOVERY  bypass=$BYPASS)"
 fi
 
 PATH="$CLEAN_PATH" exec "$CLAUDE_BIN" "$@"
