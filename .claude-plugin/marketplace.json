@@ -29,6 +29,12 @@
       "description": "Launch Claude Code in gateway mode against llm-proxy so proxy models appear in the /model picker",
       "version": "0.1.0",
       "source": "./plugins/ccgw"
+    },
+    {
+      "name": "preset",
+      "description": "Slash command to switch the active per-session preset backend on the llm-proxy via scoped HMAC",
+      "version": "0.1.0",
+      "source": "./plugins/preset"
     }
   ]
 }
