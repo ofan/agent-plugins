@@ -45,7 +45,7 @@ T="preset_$(printf %s "$CLAUDE_CODE_SESSION_ID" \
   | openssl dgst -sha256 -hmac "$PROXY_PRESET_SECRET" | cut -d" " -f2)"
 RESP=$(curl -sS -w "\n%{http_code}" -X POST "$ANTHROPIC_BASE_URL/_/preset/active" \
   -H "Authorization: Bearer $T" \
-  -d "session=$CLAUDE_CODE_SESSION_ID&backend=$1")
+  -d "session=$CLAUDE_CODE_SESSION_ID&backend="$1"$1")
 CODE=$(echo "$RESP" | tail -n1)
 BODY=$(echo "$RESP" | sed '$d')
 if [ "$CODE" = "200" ]; then
