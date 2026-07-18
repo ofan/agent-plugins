@@ -29,6 +29,14 @@ if [ -z "$PROXY_PRESET_SECRET" ]; then
   echo "PROXY_PRESET_SECRET is not set — set it in your environment (must match the proxy's secret)."
   exit 1
 fi
+if [ -z "$ANTHROPIC_BASE_URL" ]; then
+  echo "ANTHROPIC_BASE_URL is not set — are you running through the proxy?"
+  exit 1
+fi
+if [ -z "$CLAUDE_CODE_SESSION_ID" ]; then
+  echo "CLAUDE_CODE_SESSION_ID is not set — run /preset inside a Claude Code session."
+  exit 1
+fi
 if [ -z "$1" ]; then
   echo "Usage: /preset <backend|off>"
   exit 1
