@@ -1,0 +1,9 @@
+{
+  "name": "preset",
+  "description": "Slash command to switch the active per-session preset backend on the llm-proxy via scoped HMAC",
+  "version": "0.1.0",
+  "author": {
+    "name": "ofan",
+    "url": "https://github.com/ofan"
+  }
+}
