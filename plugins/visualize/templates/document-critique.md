@@ -70,6 +70,108 @@ Build one `<section>` per logical part. Reuse the matching example in the shell:
 
 **Inline annotations** (when the content itself flags points): three intents — feedback (blue/accent), question (amber/warning), suggestion (violet). Selecting text in the rendered page opens the composer; seeded annotations live in the drawer.
 
+## Revision highlights
+
+When re-rendering a report to a new version (e.g. v1 to v2 after changes), the renderer can visually mark what changed so a reviewer only re-reads the deltas. Two mechanisms work together:
+
+### 1. Revision overview section (`.rev-overview`)
+
+Add **one** `<section class="section rev-overview rev-block">` near the top of the report listing the deltas as a table:
+
+```html
+<section class="section rev-overview rev-block" data-screen-label="What's New in v2" id="section-overview">
+  <div class="section-header">
+    <span class="section-number" style="background:var(--accent)">&Delta;</span>
+    <h2>What's New in v2</h2>
+    <span class="rev-pill">NEW</span>
+  </div>
+  <div class="section-body" data-section-body="-1">
+    <p>Summary of changes since v1.</p>
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr><th>Section</th><th>What changed</th></tr></thead>
+      <tbody>
+        <tr><td>Executive Summary</td><td>Updated cost estimates from $1.2M to $1.45M</td></tr>
+        <tr><td>Architecture Plan</td><td>Added API Gateway section, revised diagram</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</section>
+```
+
+### 2. Marking changed sections (`.rev-block` + `.rev-pill`)
+
+On sections that changed, add `class="rev-block"` to the `<section>` and insert a pill:
+
+```html
+<span class="rev-pill changed">CHANGED</span>
+```
+
+inside the `.section-header` (next to the section number or heading). For brand-new sections use `rev-pill` (without `.changed`) with text "NEW".
+
+### 3. Nav-dot badges
+
+On the corresponding `.nav-dot` in the nav rail, add `class="rev"`:
+
+```html
+<button class="nav-dot rev" data-label="Architecture" data-section="2"></button>
+```
+
+This renders a tiny accent dot on the nav marker.
+
+### 4. Inline text diffs
+
+Wrap changed phrases/values with `<mark class="rev-ins">updated text</mark>` for inline highlighting.
+
+### 5. Legend chip
+
+Place a dismissible legend near the top of the report:
+
+```html
+<span class="rev-legend" onclick="this.remove()" title="Dismiss">
+  <span class="legend-dot"></span> Accent = new/changed this revision
+</span>
+```
+
+### Section numbering constraint
+
+The shell's JavaScript iterates a fixed section count (nav-dot scrolling, scroll-spy, section status, feedback badge). The `.rev-overview` **must not disturb this count**. Recommended approaches:
+
+- **Option A (safe, recommended):** Render `.rev-overview` as a non-numbered informational block placed **before** `section-0`. Give it `data-section-body="-1"` (out of range — the JS loops 0..4, so -1 is ignored) and do **not** add a nav-dot for it. It will display but won't participate in scroll-spy or approve/reject. Section numbering of the original sections stays intact.
+- **Option B (if nav visibility is needed):** Add a nav-dot for the overview, renumber ALL sections (`section-0` .. `section-N`), update every `data-section` attribute on nav-dots, and update the `data-section-comments` indices. Then verify: approve/reject buttons work, scroll-spy tracks all sections, feedback drawer shows the correct section heading per annotation, and the feedback badge count is accurate. The JS uses `Object.keys(state.sectionStatus)` loops and `document.querySelectorAll('.section')` — both pick up any number of sections, so nothing is hardcoded to 5. **However**, the existing `state.sectionStatus` and `state.sectionComments` objects are seeded with indices 0..4 — adding a section shifts indices, which will orphan any persisted review state from the prior version. Prefer Option A unless you also re-key the persisted state.
+
+After any renumbering, verify the interactive chrome still works: approve/reject on each section, annotation section tracking, nav-dot scroll-spy, and the feedback drawer.
+
+## Inline diff highlights
+
+For *edited* content inside a section (a word swapped, a value updated, a phrase reworded), wrap the change inline — reviewer reads the delta in context, no need to diff two pages mentally. This complements the block-level marks above; the two layers are independent.
+
+| Class | Use for | Markup |
+|---|---|---|
+| `.rev-del` | Removed text | `<span class="rev-del">old</span>` |
+| `.rev-ins2` | Added text | `<span class="rev-ins2">new</span>` (or `<mark class="rev-ins2">…</mark>`) |
+| `.rev-swap` | Optional wrapper keeping a del+ins pair adjacent | `<span class="rev-swap"><span class="rev-del">…</span> <span class="rev-ins2">…</span></span>` |
+| `.rev-line` | A whole changed line / list item / table row | `<tr class="rev-line">…</tr>` or `<li class="rev-line">…</li>` |
+
+**When to use what:**
+
+- **Inline marks (`.rev-del` / `.rev-ins2`)** — for *edited* content where the section itself is unchanged but a phrase/value/word inside it changed. The reviewer sees the old text struck-through in red next to the new text highlighted in green.
+- **`.rev-line`** — for a whole changed row/list item/line where marking every word would be noisy; soft green background + left border flags the line.
+- **Block marks (`.rev-block` / `.rev-pill`)** — for *whole new or heavily-changed sections*. The pill sits in the section header; the block gets a tinted background.
+- **`.rev-overview`** — the top-level "What's new" section summarizing all deltas.
+
+**Example (word swap):**
+
+```html
+<p>The cache layer uses
+   <span class="rev-del">in-memory</span>
+   <span class="rev-ins2">Postgres</span>
+   for persistence.</p>
+```
+
+Renders as: "The cache layer uses <s>in-memory</s> <u>Postgres</u> for persistence." — struck-through red old word immediately followed by green-underlined new word, all inside the same sentence.
+
+**Script-safety:** inline diff marks are pure CSS classes — they do **not** touch the shell's `<script>` section, so the interactive chrome (approve/reject, annotations, nav rail, feedback drawer, appearance panel) is completely unaffected. Add or remove them freely without re-testing JS behavior.
+
 ## Chrome (keep intact)
 
 All interactive features use **event delegation** (document-level listeners with selector matching) — they work for any number of sections, any content, and dynamically-added elements. The fill step only needs to preserve the required DOM markers below.

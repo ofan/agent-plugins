@@ -1227,6 +1227,136 @@ body {
   position: absolute; width: 1px; height: 1px;
   overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
+
+/* ── Revision highlights ── */
+
+/* Block-level highlight for a new or heavily-changed section.
+   Apply to a <section> or a content block. */
+.rev-block {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+/* Pill badge: "NEW" or "CHANGED", floated in a section header */
+.rev-pill {
+  display: inline-block;
+  font-size: 0.625em;
+  font-weight: 700;
+  font-family: var(--font-body);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 10px;
+  border-radius: 100px;
+  background: var(--accent);
+  color: #fff;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+
+.rev-pill.changed {
+  background: var(--warning);
+  color: oklch(20% 0.02 80);
+}
+
+/* Inline highlight for changed text — soft accent background, readable in all themes */
+mark.rev-ins {
+  background: var(--accent-soft);
+  color: inherit;
+  border-radius: 2px;
+  padding: 1px 4px;
+}
+
+/* Dismissible legend chip explaining the marks */
+.rev-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  border-radius: 100px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 0.75em;
+  color: var(--muted);
+  font-family: var(--font-body);
+  cursor: pointer;
+  user-select: none;
+  transition: opacity var(--transition);
+  margin-bottom: 12px;
+}
+
+.rev-legend .legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.rev-legend:hover { opacity: 0.6; }
+
+/* Nav-dot badge: tiny accent dot on a nav-dot whose section changed */
+.nav-dot.rev::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  z-index: 1;
+}
+
+/* Overview table inside the "What's new" section */
+.rev-overview .data-table td:first-child {
+  font-weight: 600;
+}
+
+/* ── Inline diff highlights ──
+   Inline marks for *edited* content (a word, a phrase, a value swapped).
+   Use .rev-block / .rev-pill for whole new/removed sections. */
+
+/* Removed text: struck-through, red tint, slightly faded — reads as "old". */
+.rev-del {
+  color: var(--danger);
+  background: var(--danger-soft);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  border-radius: 2px;
+  padding: 0 3px;
+  opacity: 0.85;
+}
+
+/* Added text: soft green tint + thin green underline; inherits foreground so
+   it reads naturally inside any prose color. (.rev-ins2 avoids clashing with
+   the pre-existing `mark.rev-ins` block-highlight class.) */
+.rev-ins2 {
+  color: inherit;
+  background: var(--success-soft);
+  border-bottom: 1px solid var(--success);
+  border-radius: 2px;
+  padding: 0 3px;
+}
+
+/* Optional wrapper keeping a del+ins pair adjacent with a thin visual gap. */
+.rev-swap {
+  white-space: nowrap;
+  display: inline;
+  gap: 2px;
+}
+.rev-swap .rev-del + .rev-ins2,
+.rev-swap .rev-del + mark.rev-ins2 { margin-left: 3px; }
+
+/* Block-level highlight for a whole changed line / table row / list item.
+   Soft green left border + tint so the change is visible without marking
+   every word. */
+.rev-line {
+  background: var(--success-soft);
+  border-left: 3px solid var(--success);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  padding-left: 8px;
+}
 </style>
 </head>
 <body>
