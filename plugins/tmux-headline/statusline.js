@@ -58,7 +58,11 @@ function resetTime(epoch, short) {
   return `${days[d.getDay()]} ${hh}:${mm}`;
 }
 
+// Proxy-only mode: when HEADLINE_PROXY_ONLY=1, suppress Anthropic plan/extra
+// and deepclaude costDisplay — proxy billing (appended by the wrapper) is the
+// single source of truth for limits/cost when routing through llm-proxy.
 function planUsage() {
+  if (process.env.HEADLINE_PROXY_ONLY === '1') return '';
   try {
     const f = os.homedir() + '/.claude/headline/usage.json';
     const pollScript = os.homedir() + '/.claude/scripts/usage-poll.sh';
@@ -134,6 +138,7 @@ function gitStatus(cwd) {
 }
 
 function extraUsage() {
+  if (process.env.HEADLINE_PROXY_ONLY === '1') return '';
   try {
     const f = os.homedir() + '/.claude/headline/usage.json';
     const data = JSON.parse(fs.readFileSync(f, 'utf8'));
@@ -145,6 +150,7 @@ function extraUsage() {
 }
 
 function costDisplay() {
+  if (process.env.HEADLINE_PROXY_ONLY === '1') return {};
   try {
     const sid = process.env.DEEPCLAUDE_SESSION_ID || '';
     const base = os.homedir() + '/.cache/tmux-headline/cost';
