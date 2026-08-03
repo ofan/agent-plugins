@@ -64,6 +64,9 @@ li{{margin-bottom:8px}} .hint{{color:#71747e;font-size:13px;margin-top:24px}}</s
         self.send_response(code)
         self.send_header("Content-Type", ct)
         self.send_header("Content-Length", str(len(body)))
+        # Pages are edited in place (same URL); without this the browser serves
+        # a heuristically-cached stale copy and updates look like they didn't land.
+        self.send_header("Cache-Control", "no-store, must-revalidate")
         self.end_headers()
         self.wfile.write(body)
 
