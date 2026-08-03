@@ -42,7 +42,20 @@ proxy_cost=""
 CACHE="$HOME/.cache/tmux-headline/proxy-cost.json"
 if [ -f "$CACHE" ]; then
   PY="$(command -v python3 || command -v python || true)"
-  [ -n "$PY" ] && proxy_cost=$("$PY" -c "import json;print(json.load(open('$CACHE')).get('display',''))" 2>/dev/null || true)
+  # The cache path below is baked into the python -c source, so it survives
+  # inside the interpreter verbatim — the MSYS shell only translates paths on
+  # the command line of a native Windows program, not inside -c strings. When
+  # python is a native Windows build (py launcher / AppData python.exe), the
+  # POSIX $HOME form (/c/Users/... or /home/...) won't resolve, so translate
+  # to a Windows path first. cygpath is a no-op-safe fallback everywhere else.
+  CACHE_PY="$CACHE"
+  command -v cygpath >/dev/null 2>&1 && CACHE_PY="$(cygpath -m "$CACHE" 2>/dev/null || printf '%s' "$CACHE")"
+  # PYTHONIOENCODING=utf-8: on Windows, native python defaults stdout to the
+  # console codepage (cp1252), which cannot encode the ▀/░ block glyphs the
+  # billing bars use — print() then throws UnicodeEncodeError and the second
+  # line silently vanishes (only ASCII displays like a bare $balance survive).
+  # Forcing UTF-8 keeps the glyphs intact; harmless on Linux/macOS.
+  [ -n "$PY" ] && proxy_cost=$(PYTHONIOENCODING=utf-8 "$PY" -c "import json;print(json.load(open('$CACHE_PY')).get('display',''))" 2>/dev/null || true)
 fi
 
 # Assemble. Row 1: base + effort. Row 2: active-model limit/usage (if any).
