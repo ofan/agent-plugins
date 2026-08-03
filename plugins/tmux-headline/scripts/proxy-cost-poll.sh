@@ -18,7 +18,11 @@
 # heredoc quirks). Runs under bash/dash on Linux, macOS, Git Bash, WSL.
 set -eu
 
-PROXY="${LLM_PROXY_URL:-http://proxy.lab.tf}"
+# Billing base URL. Priority: explicit LLM_PROXY_URL → the ANTHROPIC_BASE_URL
+# Claude Code already exports to the statusline env (that's the proxy actually
+# in use, incl. its http/https scheme) → hardcoded default. Nothing sets
+# LLM_PROXY_URL today, so in practice this follows ANTHROPIC_BASE_URL.
+PROXY="${LLM_PROXY_URL:-${ANTHROPIC_BASE_URL:-http://proxy.lab.tf}}"
 CACHE_DIR="$HOME/.cache/tmux-headline"
 CACHE="$CACHE_DIR/proxy-cost.json"
 CATALOG_CACHE="$CACHE_DIR/proxy-models.json"
