@@ -194,7 +194,7 @@ function main() {
   const h = os.hostname().split('.')[0];
 
   const model = (j.model?.display_name || j.model?.id || '?')
-    .replace(/^Claude\s*/i, '').replace(/\s*\(.*?\)/g, '').replace(/\s+/g, '').toLowerCase();
+    .replace(/^Claude\s*/i, '').replace(/\s*\(.*?\)/g, '').replace(/\s*\[.*?\]/g, '').replace(/\s+/g, '').toLowerCase();
 
   const cw = j.context_window || {};
   const remaining = cw.remaining_percentage ?? (100 - (cw.used_percentage || 0));
