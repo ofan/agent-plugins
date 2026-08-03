@@ -85,7 +85,7 @@ if model_id:
     for pre in ('llm-proxy/', 'claude-'):
         if s.startswith(pre): s = s[len(pre):]
     provider = s.split('/', 1)[0]
-    stem = s.rsplit('/', 1)[-1].split('[', 0)[0]   # drop [1m]/[262k] suffix
+    stem = s.rsplit('/', 1)[-1].split('[')[0]   # drop [1m]/[262k] suffix
 provider = provider.lower()
 
 # ── Resolve bare id → real provider via /v1/models catalog ─────────────────
