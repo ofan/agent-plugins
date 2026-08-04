@@ -92,7 +92,7 @@ provider = provider.lower()
 # With no backend/ prefix the provider above is a guess from the model NAME
 # ("k3"→"k3"), which matches nothing in /_/billing. The catalog lists every
 # served id as "<backend>/<model>"; self-maintaining, no hardcoded table.
-if stem and '/' not in model_id:
+if stem:
     catalog = ''
     if os.path.exists(catalog_file) and (time.time() - mtime(catalog_file)) < 3600:
         try: catalog = open(catalog_file).read()
