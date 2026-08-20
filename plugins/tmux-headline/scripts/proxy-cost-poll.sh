@@ -75,24 +75,54 @@ def mtime(p):
 if not model_id:
     model_id = load_json(stdin_json).get('model', {}).get('id', '')
 
-# ── Derive provider + bare model stem ──────────────────────────────────────
-# Claude Code's statusline JSON carries the BARE id (e.g. "k3", "glm-5.2") —
-# the proxy resolves the backend server-side, so no prefix reaches the client.
-provider = ''
-stem = ''
+# ── Normalized lookup candidates (mirrors llm-proxy buildModelBillingMap) ──
+# The proxy advertises BARE deduplicated ids in /v1/models (no backend prefix),
+# so a client cannot infer the billing provider from the name. /_/billing.by_model
+# is the proxy-authoritative model → billing-provider map; we probe it in
+# specificity order: raw id (aliases live here) → claude-/llm-proxy-prefix
+# stripped → bare stem (backend-prefixed ids like opencode-go/glm-5.2).
+lookup = []
 if model_id:
-    s = model_id.split('://', 1)[-1]
+    s = model_id.split('://', 1)[-1].lower()
+    s = s.split('[')[0]                         # drop [1m]/[262k] suffix
+    if s: lookup.append(s)
+    t = s
     for pre in ('llm-proxy/', 'claude-'):
-        if s.startswith(pre): s = s[len(pre):]
-    provider = s.split('/', 1)[0]
-    stem = s.rsplit('/', 1)[-1].split('[')[0]   # drop [1m]/[262k] suffix
-provider = provider.lower()
+        if t.startswith(pre): t = t[len(pre):]
+    if t and t not in lookup: lookup.append(t)  # prefix-stripped
+    bare = t.rsplit('/', 1)[-1]
+    if bare and bare not in lookup: lookup.append(bare)  # bare stem
+model_key = lookup[0] if lookup else ''
 
-# ── Resolve bare id → real provider via /v1/models catalog ─────────────────
-# With no backend/ prefix the provider above is a guess from the model NAME
-# ("k3"→"k3"), which matches nothing in /_/billing. The catalog lists every
-# served id as "<backend>/<model>"; self-maintaining, no hardcoded table.
-if stem:
+# ── Throttle: reuse cache when fresh AND same active model ─────────────────
+# Cache keyed on the model id (not a guessed provider), so ANY model switch
+# invalidates immediately and re-renders against the new model's provider.
+if os.path.exists(cache):
+    cached = load_json(open(cache).read() if mtime(cache) else '{}')
+    if cached.get('model_key', '') != model_key:
+        try: os.remove(cache)   # model changed — show nothing while re-polling
+        except Exception: pass
+    elif (time.time() - mtime(cache)) < throttle:
+        raise SystemExit(0)
+
+os.makedirs(cache_dir, exist_ok=True)
+billing = load_json(fetch(proxy + '/_/billing') or '{}')
+
+# ── Resolve provider via /_/billing.by_model (proxy-authoritative) ─────────
+provider = ''
+by_model = billing.get('by_model') or {}
+if isinstance(by_model, dict):
+    for k in lookup:
+        p = by_model.get(k)
+        if p:
+            provider = str(p)
+            break
+
+# ── Fallback: /v1/models catalog (proxies without by_model) ────────────────
+# Older proxies list served ids as "<backend>/<model>"; self-maintaining, no
+# hardcoded table. On by_model-capable proxies this adds nothing (bare ids).
+stem = lookup[-1] if lookup else ''
+if not provider and stem:
     catalog = ''
     if os.path.exists(catalog_file) and (time.time() - mtime(catalog_file)) < 3600:
         try: catalog = open(catalog_file).read()
@@ -100,7 +130,6 @@ if stem:
     if not catalog:
         catalog = fetch(proxy + '/v1/models')
         if catalog:
-            os.makedirs(cache_dir, exist_ok=True)
             try: open(catalog_file, 'w').write(catalog)
             except Exception: pass
     hit = ''
@@ -112,18 +141,6 @@ if stem:
         if prov.startswith('claude-'): prov = prov[len('claude-'):]  # prefer raw backend
         if name == stem and not hit: hit = prov
     if hit: provider = hit
-
-# ── Throttle: reuse cache only when fresh AND same provider ────────────────
-if os.path.exists(cache):
-    cached = load_json(open(cache).read() if mtime(cache) else '{}')
-    if cached.get('provider', '') != provider:
-        try: os.remove(cache)   # provider changed — show nothing while re-polling
-        except Exception: pass
-    elif (time.time() - mtime(cache)) < throttle:
-        raise SystemExit(0)
-
-os.makedirs(cache_dir, exist_ok=True)
-billing = load_json(fetch(proxy + '/_/billing') or '{}')
 
 R='\x1b[0m'; DIM='\x1b[2m'; CY='\x1b[2;36m'; G='\x1b[2;32m'; Y='\x1b[2;33m'; RE='\x1b[2;31m'
 
@@ -248,5 +265,5 @@ if display and display_label:
     display = f'{CY}{display_label}{stale_mark}{R} {display}'
 
 with open(cache, 'w') as f:
-    json.dump({'ts': int(time.time()), 'display': display, 'provider': provider}, f)
+    json.dump({'ts': int(time.time()), 'display': display, 'provider': provider, 'model_key': model_key}, f)
 PYEOF
