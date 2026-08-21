@@ -37,25 +37,39 @@ fi
 # statusline JSON so the poll can read .model.id. Non-fatal if it errors.
 printf '%s' "$input" | bash "$PLUGIN_DIR/proxy-cost-poll.sh" 2>/dev/null || true
 
-# Read cached display.
+# Read cached display for THIS model. The poller (proxy-cost-poll.sh) keeps
+# ONE cache file PER MODEL so concurrent sessions on different models never
+# clobber each other; the file name is derived from the same key the poller
+# uses: model id -> strip scheme -> lowercase -> strip [size] suffix, sanitized.
 proxy_cost=""
-CACHE="$HOME/.cache/tmux-headline/proxy-cost.json"
-if [ -f "$CACHE" ]; then
-  PY="$(command -v python3 || command -v python || true)"
-  # The cache path below is baked into the python -c source, so it survives
-  # inside the interpreter verbatim — the MSYS shell only translates paths on
-  # the command line of a native Windows program, not inside -c strings. When
-  # python is a native Windows build (py launcher / AppData python.exe), the
-  # POSIX $HOME form (/c/Users/... or /home/...) won't resolve, so translate
-  # to a Windows path first. cygpath is a no-op-safe fallback everywhere else.
-  CACHE_PY="$CACHE"
-  command -v cygpath >/dev/null 2>&1 && CACHE_PY="$(cygpath -m "$CACHE" 2>/dev/null || printf '%s' "$CACHE")"
+PY="$(command -v python3 || command -v python || true)"
+if [ -n "$PY" ]; then
+  # CACHE_DIR is passed as an env var (not baked into -c) but still translated
+  # via cygpath for native-Windows python (MSYS only translates command-line
+  # paths, not env values) -- POSIX /c/... or /home/... forms won't resolve
+  # there. cygpath is a no-op-safe fallback everywhere else.
+  CACHE_DIR="$HOME/.cache/tmux-headline"
+  command -v cygpath >/dev/null 2>&1 && CACHE_DIR="$(cygpath -m "$CACHE_DIR" 2>/dev/null || printf '%s' "$CACHE_DIR")"
   # PYTHONIOENCODING=utf-8: on Windows, native python defaults stdout to the
-  # console codepage (cp1252), which cannot encode the ▀/░ block glyphs the
-  # billing bars use — print() then throws UnicodeEncodeError and the second
+  # console codepage (cp1252), which cannot encode the block glyphs the
+  # billing bars use -- print() then throws UnicodeEncodeError and the second
   # line silently vanishes (only ASCII displays like a bare $balance survive).
   # Forcing UTF-8 keeps the glyphs intact; harmless on Linux/macOS.
-  [ -n "$PY" ] && proxy_cost=$(PYTHONIOENCODING=utf-8 "$PY" -c "import json;print(json.load(open('$CACHE_PY')).get('display',''))" 2>/dev/null || true)
+  proxy_cost=$(printf '%s' "$input" | CACHE_DIR="$CACHE_DIR" PYTHONIOENCODING=utf-8 "$PY" -c '
+import json, os, re, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    d = {}
+mid = ((d.get("model") or {}).get("id") or "")
+s = mid.split("://", 1)[-1].lower().split("[", 1)[0]
+key = re.sub(r"[^a-z0-9._-]+", "_", s) or "default"
+path = os.path.join(os.environ.get("CACHE_DIR", os.path.expanduser("~/.cache/tmux-headline")), "proxy-cost-%s.json" % key)
+try:
+    sys.stdout.write(json.load(open(path)).get("display", ""))
+except Exception:
+    pass
+' 2>/dev/null || true)
 fi
 
 # Assemble. Row 1: base + effort. Row 2: active-model limit/usage (if any).
