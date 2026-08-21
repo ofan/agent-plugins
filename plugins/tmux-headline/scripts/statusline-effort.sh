@@ -9,10 +9,10 @@
 # Effort source: CLAUDE_EFFORT env (set by /effort), else the statusLine input
 # JSON "effort" field.
 #
-# Proxy billing: polls /_/billing for the ACTIVE model's provider via the
-# sibling proxy-cost-poll.sh. HEADLINE_PROXY_ONLY=1 suppresses the plugin's
-# built-in Anthropic plan/cost segments (they read Anthropic rate-limit headers
-# that are meaningless when ANTHROPIC_BASE_URL routes through llm-proxy).
+# Proxy billing: row 2 is rendered from llm-proxy billing (/_/billing) for
+# the ACTIVE model's provider via the sibling proxy-cost-poll.sh — the single
+# source of truth for limits/usage/cost. The legacy Anthropic-header and
+# deepclaude cost segments were removed (they were wrong behind the proxy).
 #
 # Cross-platform: POSIX sh + Node + python3; works on Linux, macOS, Git Bash,
 # WSL. PLUGIN_DIR resolves the script's own location so the poll script is
@@ -24,8 +24,9 @@ PLUGIN_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)
 [ -z "$PLUGIN_DIR" ] && PLUGIN_DIR="$HOME/.claude/plugins/marketplaces/ofan-plugins/plugins/tmux-headline/scripts"
 ROOT_DIR=$(dirname "$PLUGIN_DIR")
 
-# Render base line with proxy-only suppression.
-base=$(printf '%s' "$input" | env HEADLINE_PROXY_ONLY=1 node "$ROOT_DIR/statusline.js" 2>/dev/null | tr -d '\r\n')
+# Render base line (row 1: cwd/git/model/ctx — no usage segments; billing
+# lives entirely on row 2 via the proxy poll below).
+base=$(printf '%s' "$input" | node "$ROOT_DIR/statusline.js" 2>/dev/null | tr -d '\r\n')
 
 # Resolve effort.
 effort="${CLAUDE_EFFORT:-}"

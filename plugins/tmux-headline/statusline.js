@@ -1,24 +1,18 @@
 #!/usr/bin/env node
-// Claude Code statusline
+// Claude Code statusline — row 1 only (cwd+git · model · ctx · user@host).
+// Limits/usage/cost live EXCLUSIVELY on row 2, rendered by the wrapper
+// (scripts/statusline-effort.sh) from llm-proxy billing (/_/billing) via
+// proxy-cost-poll.sh. The legacy per-vendor segments (Anthropic rate-limit
+// headers, deepclaude local-proxy cost) were removed — one source of truth.
 const os = require('os');
 const fs = require('fs');
-const path = require('path');
 const { execFileSync } = require('child_process');
-const scriptDir = __dirname;
 
 const R = '\x1b[0m', DIM = '\x1b[2m';
 const G = '\x1b[2;32m', Y = '\x1b[2;33m', RE = '\x1b[2;31m';
 const FG = '\x1b[2;36m', M = '\x1b[2;35m';
 
 const pc = p => p < 50 ? G : p < 80 ? Y : RE;
-
-function dur(ms) {
-  if (!ms) return '0m';
-  const m = Math.floor(ms / 60000);
-  if (m < 60) return m + 'm';
-  const h = Math.floor(m / 60), rm = m % 60;
-  return h + 'h' + (rm ? rm + 'm' : '');
-}
 
 function shortCwd(cwd) {
   const home = os.homedir().replace(/\\/g, '/');
@@ -39,70 +33,6 @@ function ctxSize(cw) {
   const sz = cw.context_window_size || 200000;
   if (sz >= 1e6) return Math.round(sz / 1e6) + 'm';
   return Math.round(sz / 1e3) + 'k';
-}
-
-function resetTime(epoch, short) {
-  const diff = epoch - Date.now() / 1000;
-  if (diff <= 0) return 'now';
-  if (short) {
-    const m = Math.floor(diff / 60);
-    if (m < 60) return m + 'm';
-    const h = Math.floor(m / 60), rm = m % 60;
-    return h + 'h' + (rm ? String(rm).padStart(2, '0') : '');
-  }
-  // Show day + time in local TZ
-  const d = new Date(epoch * 1000);
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${days[d.getDay()]} ${hh}:${mm}`;
-}
-
-// Proxy-only mode: when HEADLINE_PROXY_ONLY=1, suppress Anthropic plan/extra
-// and deepclaude costDisplay — proxy billing (appended by the wrapper) is the
-// single source of truth for limits/cost when routing through llm-proxy.
-function planUsage() {
-  if (process.env.HEADLINE_PROXY_ONLY === '1') return '';
-  try {
-    const f = os.homedir() + '/.claude/headline/usage.json';
-    const pollScript = os.homedir() + '/.claude/scripts/usage-poll.sh';
-    if (!fs.existsSync(pollScript)) return '';
-    let data;
-    try { data = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { data = null; }
-    // Auto-poll if missing or stale (> 120s)
-    if (!data || Date.now() / 1000 - data.ts > 120) {
-      try { execFileSync('bash', [pollScript], { timeout: 10000, stdio: 'ignore' }); } catch {}
-      try { data = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return ''; }
-    }
-    if (Date.now() / 1000 - data.ts > 3600) return '';
-    const h5 = Math.round(data['5h'] * 100);
-    const d7 = Math.round(data['7d'] * 100);
-    const h5r = resetTime(data['5h_reset'], true);
-    const d7r = resetTime(data['7d_reset'], false);
-    // Colors: filled bar + label = usage-colored (green/yellow/red)
-    //         empty bar = dim grey, reset time = dim
-    const BSTYLE = process.env.HEADLINE_BAR_STYLE || 'solid';
-    const bar = (pct, w) => {
-      const label = `${pct}%`;
-      const filled = Math.round(pct / 100 * w);
-      const pad = Math.max(0, Math.floor((w - label.length) / 2));
-      const [fc, ec] = BSTYLE === 'ascii' ? ['=', '-'] : ['█', '░'];
-      let inner = fc.repeat(filled) + ec.repeat(w - filled);
-      inner = inner.slice(0, pad) + label + inner.slice(pad + label.length);
-      let out = '';
-      for (let i = 0; i < inner.length; i++) {
-        const ch = inner[i];
-        const inFilled = i < filled;
-        if (ch === fc || ch === ec) {
-          out += `${inFilled ? pc(pct) : DIM}${ch}${R}`;
-        } else {
-          out += `${pc(pct)}${ch}${R}`;
-        }
-      }
-      return out;
-    };
-    return `${bar(h5, 10)} ${DIM}${h5r}${R} ${DIM}· ${R}${bar(d7, 10)} ${DIM}${d7r}${R}`;
-  } catch { return ''; }
 }
 
 function gitStatus(cwd) {
@@ -137,55 +67,6 @@ function gitStatus(cwd) {
   } catch { return ''; }
 }
 
-function extraUsage() {
-  if (process.env.HEADLINE_PROXY_ONLY === '1') return '';
-  try {
-    const f = os.homedir() + '/.claude/headline/usage.json';
-    const data = JSON.parse(fs.readFileSync(f, 'utf8'));
-    if (Date.now() / 1000 - data.ts > 3600) return '';
-    if (data.overage == null || data.overage <= 0) return '';
-    const pct = Math.round(data.overage * 100);
-    return `${DIM}Extra ${R}${pc(pct)}${pct}%${R}`;
-  } catch { return ''; }
-}
-
-function costDisplay() {
-  if (process.env.HEADLINE_PROXY_ONLY === '1') return {};
-  try {
-    const sid = process.env.DEEPCLAUDE_SESSION_ID || '';
-    const base = os.homedir() + '/.cache/tmux-headline/cost';
-    const files = [base + '-' + sid.slice(0,8) + '.json', base + '.json'];
-    let f = '';
-    for (const cand of files) {
-      try { if (fs.existsSync(cand)) { f = cand; break; } } catch {}
-    }
-    // Auto-poll if missing or stale (> 60s). cost-poll.sh throttles to 30s internally.
-    const pollScript = path.join(scriptDir, 'scripts', 'cost-poll.sh');
-    if (fs.existsSync(pollScript)) {
-      let preData;
-      try { preData = f ? JSON.parse(fs.readFileSync(f, 'utf8')) : null; } catch { preData = null; }
-      if (!preData || Date.now() / 1000 - preData.ts > 60) {
-        try { execFileSync('bash', [pollScript], { timeout: 10000, stdio: 'ignore' }); } catch {}
-        // Re-resolve file after poll (may have been created by the poll)
-        if (!f) {
-          for (const cand of files) {
-            try { if (fs.existsSync(cand)) { f = cand; break; } } catch {}
-          }
-        }
-      }
-    }
-    if (!f) return {};
-    const data = JSON.parse(fs.readFileSync(f, 'utf8'));
-    const age = Date.now() / 1000 - data.ts;
-    if (age > 300) return {};
-    const rawLabel = data.label || '';
-    const label = rawLabel === 'ds' ? `${Y}ds${R}` : rawLabel === 'an' ? `${G}an${R}` : '';
-    const display = data.display || (data.cost != null ? `$${data.cost}` : '');
-    if (!display) return {};
-    return { text: `${label} ${G}${display}${R}`, isDeepSeek: rawLabel === 'ds' };
-  } catch { return {}; }
-}
-
 function main() {
   let j;
   try { j = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.stdout.write('…'); return; }
@@ -205,20 +86,10 @@ function main() {
   const curTok = totalTokens({ total_input_tokens: ctxUsed, total_output_tokens: 0 });
   const git = gitStatus(j.cwd || process.cwd());
 
-  const costInfo = costDisplay();
-  // Only hide plan/extra for DeepSeek (no usage limits concept).
-  // Anthropic and OpenRouter backends still have rate/cost limits.
-  const isDeepSeek = costInfo.isDeepSeek || false;
-  const plan = isDeepSeek ? '' : planUsage();
-  const extra = isDeepSeek ? '' : extraUsage();
-
   const parts = [
     `${FG}${cwd}${R} ${git}`,
     `${DIM}${model}(${csz})${R}`,
     `${DIM}ctx ${R}${pc(100 - remaining)}${curTok}/${csz}${R}`,
-    costInfo.text,
-    plan,
-    extra,
     `${DIM}${u}@${h}${R}`,
   ].filter(Boolean);
 
