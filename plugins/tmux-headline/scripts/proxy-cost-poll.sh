@@ -8,11 +8,17 @@
 #   Balance: $X.XX (only when extra_credits exists)
 #
 # Active model from stdin (Claude Code .model.id) or PROXY_ACTIVE_MODEL env.
-# Sources: /v1/models (model→backend resolution) + /_/billing (quota windows).
+# Sources: /_/billing (by_model map + quota windows; /v1/models catalog only
+# as a fallback for proxies without by_model).
 # Caches (under ~/.cache/tmux-headline):
-#   proxy-cost.json   — rendered display + provider, 60s throttle, invalidated
-#                       on provider/model switch so bars always match the model
-#   proxy-models.json — /v1/models catalog, 1h TTL (bare-id → backend lookup)
+#   proxy-cost-<model>.json — ONE FILE PER MODEL: rendered display + provider,
+#                       60s throttle. Keyed by the model so concurrent sessions
+#                       on different models never invalidate each other's
+#                       display (a shared file made the statusline flap/blank).
+#                       Written atomically (tmp + rename); a FAILED fetch
+#                       writes nothing so a transient outage never blanks the
+#                       line for the throttle window.
+#   proxy-models.json — /v1/models catalog, 1h TTL (fallback resolution only)
 #
 # Cross-platform: Python 3 does all parsing/date math (no GNU stat, no bash
 # heredoc quirks). Runs under bash/dash on Linux, macOS, Git Bash, WSL.
@@ -24,7 +30,6 @@ set -eu
 # LLM_PROXY_URL today, so in practice this follows ANTHROPIC_BASE_URL.
 PROXY="${LLM_PROXY_URL:-${ANTHROPIC_BASE_URL:-http://proxy.lab.tf}}"
 CACHE_DIR="$HOME/.cache/tmux-headline"
-CACHE="$CACHE_DIR/proxy-cost.json"
 CATALOG_CACHE="$CACHE_DIR/proxy-models.json"
 THROTTLE=60
 
@@ -41,15 +46,14 @@ if [ -z "${PROXY_ACTIVE_MODEL:-}" ] && [ ! -t 0 ]; then
 fi
 
 MODEL_ID="${PROXY_ACTIVE_MODEL:-}" PROXY="$PROXY" \
-STDIN_JSON="$STDIN_JSON" CACHE="$CACHE" CATALOG_CACHE="$CATALOG_CACHE" \
+STDIN_JSON="$STDIN_JSON" CATALOG_CACHE="$CATALOG_CACHE" \
 CACHE_DIR="$CACHE_DIR" THROTTLE="$THROTTLE" "$PY" - <<'PYEOF'
-import json, os, time, calendar, urllib.request
+import json, os, re, time, calendar, urllib.request
 
 def env(k, d=''):
     return os.environ.get(k, d)
 
 proxy        = env('PROXY').rstrip('/')
-cache        = env('CACHE')
 catalog_file = env('CATALOG_CACHE')
 cache_dir    = env('CACHE_DIR')
 throttle     = int(env('THROTTLE', '60'))
@@ -93,6 +97,9 @@ if model_id:
     bare = t.rsplit('/', 1)[-1]
     if bare and bare not in lookup: lookup.append(bare)  # bare stem
 model_key = lookup[0] if lookup else ''
+# Per-model cache file (see header): concurrent sessions on different models
+# each keep their own display; nobody invalidates anybody else.
+cache = os.path.join(cache_dir, 'proxy-cost-%s.json' % (re.sub(r'[^a-z0-9._-]+', '_', model_key) or 'default'))
 
 # ── Throttle: reuse cache when fresh AND same active model ─────────────────
 # Cache keyed on the model id (not a guessed provider), so ANY model switch
@@ -106,7 +113,15 @@ if os.path.exists(cache):
         raise SystemExit(0)
 
 os.makedirs(cache_dir, exist_ok=True)
-billing = load_json(fetch(proxy + '/_/billing') or '{}')
+billing_raw = fetch(proxy + '/_/billing')
+
+# ── Fetch failure: keep the last good display ──────────────────────────────
+# A failed fetch must NOT write an empty display — the throttle would pin the
+# blank for THROTTLE seconds (even a later good poll exits early on the fresh
+# cache). Exiting unwritten leaves the previous display visible instead.
+if not billing_raw:
+    raise SystemExit(0)
+billing = load_json(billing_raw)
 
 # ── Resolve provider via /_/billing.by_model (proxy-authoritative) ─────────
 provider = ''
@@ -264,6 +279,10 @@ display = f'{DIM}·{R}'.join(segs)
 if display and display_label:
     display = f'{CY}{display_label}{stale_mark}{R} {display}'
 
-with open(cache, 'w') as f:
+# Atomic write: readers (statusline-effort.sh, ~per redraw) must never see a
+# torn file — write to a pid-suffixed tmp then rename over.
+tmp = '%s.tmp.%d' % (cache, os.getpid())
+with open(tmp, 'w') as f:
     json.dump({'ts': int(time.time()), 'display': display, 'provider': provider, 'model_key': model_key}, f)
+os.replace(tmp, cache)
 PYEOF
