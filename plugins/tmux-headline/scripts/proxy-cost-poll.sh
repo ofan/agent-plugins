@@ -275,6 +275,13 @@ if target_entry:
         if extra and extra > 0:                             # 5. balance
             segs.append(f'{DIM}{G}${extra:.2f}{R}')
 
+    # 6. real spend, last 30d from the proxy's usage ledger (the "usage" half
+    #    of limits+usage; for PAYG providers like deepseek this is the only
+    #    usage signal — quota windows don't exist on a wallet account).
+    cost = b.get('cost_30d')
+    if cost is not None and cost > 0:
+        segs.append(f'{DIM}30d{R} {G}${cost:,.2f}{R}')
+
 display = f'{DIM}·{R}'.join(segs)
 if display and display_label:
     display = f'{CY}{display_label}{stale_mark}{R} {display}'

@@ -204,7 +204,6 @@ scripts/tmux-headline-ticker.sh   background daemon driving @spinner_glyph at 2H
 scripts/claude-spinner.sh         single-frame emitter (used by /headline command)
 scripts/extract-headline.sh       transcript-mode extraction (Pi)
 scripts/spinner.sh                braille frame utility (general purpose)
-scripts/usage-poll.sh             subscription usage poller
 scripts/git-status.sh             tmux status helper
 scripts/headline-render.sh        legacy single-pane renderer (kept for compatibility)
 
