@@ -35,6 +35,12 @@
       "description": "Slash command to switch the active per-session preset backend on the llm-proxy via scoped HMAC",
       "version": "0.1.0",
       "source": "./plugins/preset"
+    },
+    {
+      "name": "motion-design",
+      "description": "Design and render motion graphics and product/UI videos from deterministic code: seek(t) scenes, spring physics, frame-synced audio, critique loop",
+      "version": "0.1.0",
+      "source": "./plugins/motion-design"
     }
   ]
 }
