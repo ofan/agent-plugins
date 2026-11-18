@@ -1,6 +1,6 @@
 ---
 name: launch-legal-check
-description: Pre-launch legal check for a vibe-coded or AI-built app — audit for the 6 laws such apps commonly break (COPPA age gate, GDPR external fonts, CIPA session replay, CAN-SPAM email, California auto-renewal, DMCA agent), fix what is fixable in code, and list what only the owner can do. Trigger phrasing: "check my app before launch", "legal check this app", "is this app compliant", "vibe coder laws", "pre-launch checklist".
+description: "Audit an app before launch for the 6 common legal traps (COPPA, GDPR fonts, CIPA replay, CAN-SPAM, California auto-renewal, DMCA agent), fix code findings, and list owner-only steps. Trigger phrasing: check my app before launch, legal check this app, is this app compliant, vibe coder laws, pre-launch checklist."
 ---
 
 # Pre-launch legal check — 6 laws vibe-coded apps break
