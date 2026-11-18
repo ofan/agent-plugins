@@ -41,6 +41,12 @@
       "description": "Design and render motion graphics and product/UI videos from deterministic code: seek(t) scenes, spring physics, frame-synced audio, critique loop",
       "version": "0.1.0",
       "source": "./plugins/motion-design"
+    },
+    {
+      "name": "launch-legal-check",
+      "description": "Audit an app before launch for the 6 common legal traps (COPPA, GDPR fonts, CIPA replay, CAN-SPAM, California auto-renewal, DMCA agent), fix code findings, and list owner-only steps",
+      "version": "0.1.0",
+      "source": "./plugins/launch-legal-check"
     }
   ]
 }

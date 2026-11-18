@@ -24,3 +24,4 @@ claude plugin install deepclaude@ofan-plugins
 ## License
 
 MIT
+| [launch-legal-check](plugins/launch-legal-check/) | Pre-launch legal check: audit an app for the 6 laws vibe-coded apps commonly break (COPPA, GDPR fonts, CIPA replay, CAN-SPAM, California auto-renewal, DMCA agent), fix in code, list owner-only steps |

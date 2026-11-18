@@ -1,0 +1,1 @@
+{"author":{"name":"ofan","url":"https://github.com/ofan"},"description":"Audit an app before launch for the 6 common legal traps (COPPA, GDPR fonts, CIPA replay, CAN-SPAM, California auto-renewal, DMCA agent), fix code findings, and list owner-only steps","name":"launch-legal-check","version":"0.1.0"}
